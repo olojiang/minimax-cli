@@ -1,0 +1,29 @@
+{
+  "name": "minimax-cli",
+  "version": "1.0.0",
+  "description": "MiniMax Coding Plan API CLI - 联网搜索与图像理解",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "minimax": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js",
+    "search": "node cli.js search",
+    "understand": "node cli.js understand-image",
+    "test": "node --test tests/*.test.js",
+    "build": "echo 'Build complete'",
+    "init": "npm link",
+    "publish": "npm publish --access public"
+  },
+  "keywords": [
+    "minimax",
+    "cli",
+    "search",
+    "image-understanding",
+    "ai"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

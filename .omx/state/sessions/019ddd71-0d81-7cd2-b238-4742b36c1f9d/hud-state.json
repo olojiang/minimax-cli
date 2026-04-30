@@ -1,0 +1,6 @@
+{
+  "last_turn_at": "2026-04-30T11:13:50.763Z",
+  "turn_count": 3,
+  "last_progress_at": "2026-04-30T11:13:50.763Z",
+  "last_agent_output": "已实现：切换到各功能面板时，会自动调用 `checkQuota()` 查询配额，并在面板顶部展示当前功能对应模型的关键信息。\n\n覆盖功能：\n- 联网搜索：`coding-plan-search`\n- "
+}
