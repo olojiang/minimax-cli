@@ -19,6 +19,13 @@
       </button>
     </div>
     <ApiProgress v-if="loading" title="正在联网搜索" detail="搜索请求已提交，正在聚合结果并解析结构化内容" />
+    <p
+      v-if="error"
+      class="error-message"
+      role="alert"
+    >
+      {{ error }}
+    </p>
 
     <!-- 搜索历史 -->
     <InputHistory 
@@ -32,7 +39,12 @@
     <!-- 搜索结果 -->
     <div v-if="result" class="result-box">
       <div class="result-header">
-        <h4>搜索结果:</h4>
+        <div>
+          <h4>搜索结果:</h4>
+          <p v-if="organicResults.length > 0" class="result-count">
+            MiniMax 本次返回 {{ organicResults.length }} 条
+          </p>
+        </div>
         <div class="view-toggle">
           <button :class="{ active: viewMode === 'panel' }" @click="viewMode = 'panel'">面板展示</button>
           <button :class="{ active: viewMode === 'json' }" @click="viewMode = 'json'">JSON</button>
@@ -41,11 +53,11 @@
       
       <!-- Panel View -->
       <div v-if="viewMode === 'panel'" class="panel-view">
-        <div v-if="result.organic && result.organic.length > 0" class="organic-results">
-          <div v-for="(item, idx) in result.organic" :key="idx" class="organic-item">
-            <a :href="item.link" target="_blank" class="item-title">{{ item.title }}</a>
+        <div v-if="organicResults.length > 0" class="organic-results">
+          <div v-for="(item, idx) in organicResults" :key="item.link || idx" class="organic-item">
+            <a :href="item.link" target="_blank" rel="noopener noreferrer" class="item-title">{{ item.title }}</a>
             <p class="item-snippet">{{ item.snippet }}</p>
-            <a :href="item.link" target="_blank" class="item-link">{{ item.link }}</a>
+            <a :href="item.link" target="_blank" rel="noopener noreferrer" class="item-link">{{ item.link }}</a>
           </div>
         </div>
         <div v-else class="no-results">
@@ -60,19 +72,60 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { searchWeb } from '../api/client';
 import InputHistory from './InputHistory.vue';
 import ApiProgress from './ApiProgress.vue';
 import QuotaSummary from './QuotaSummary.vue';
 import { useHistory } from '../composables/useHistory';
+import { readJsonStorage, writeJsonStorage } from '../utils/safeStorage';
+
+type ViewMode = 'panel' | 'json';
+
+type SearchResultCache = {
+  query: string;
+  result: unknown;
+  viewMode?: ViewMode;
+  savedAt: number;
+};
 
 const query = ref('');
 const loading = ref(false);
 const result = ref<any>(null);
-const viewMode = ref<'panel' | 'json'>('panel');
+const error = ref('');
+const viewMode = ref<ViewMode>('panel');
+const lastResultQuery = ref('');
+const searchResultCacheKey = 'mmx_search_last_result';
 
 const { history, addToHistory, deleteHistory, clearHistory } = useHistory('mmx_search_history');
+
+const isSearchResultCache = (value: unknown): value is SearchResultCache => {
+  if (!value || typeof value !== 'object') return false;
+  const cache = value as Partial<SearchResultCache>;
+  return typeof cache.query === 'string'
+    && typeof cache.savedAt === 'number'
+    && typeof cache.result !== 'undefined';
+};
+
+const saveSearchResultCache = () => {
+  if (!lastResultQuery.value.trim() || !result.value) return;
+  writeJsonStorage(searchResultCacheKey, {
+    query: lastResultQuery.value,
+    result: result.value,
+    viewMode: viewMode.value,
+    savedAt: Date.now(),
+  });
+};
+
+onMounted(() => {
+  const cache = readJsonStorage<SearchResultCache>(searchResultCacheKey, isSearchResultCache);
+  if (!cache) return;
+
+  query.value = cache.query;
+  lastResultQuery.value = cache.query;
+  result.value = cache.result;
+  viewMode.value = cache.viewMode === 'json' ? 'json' : 'panel';
+});
 
 const selectHistory = (item: string) => {
   query.value = item;
@@ -84,14 +137,17 @@ const performSearch = async () => {
   
   loading.value = true;
   result.value = null;
+  error.value = '';
   addToHistory(query.value);
   
   try {
     const res = await searchWeb(query.value);
+    lastResultQuery.value = query.value.trim();
     result.value = res;
     viewMode.value = 'panel'; // Default to panel
+    saveSearchResultCache();
   } catch (err) {
-    // Error is handled and logged by the client, but we clear the loading state
+    error.value = err instanceof Error ? err.message : '搜索失败，请检查设置或稍后重试。';
   } finally {
     loading.value = false;
   }
@@ -100,6 +156,12 @@ const performSearch = async () => {
 const formatResult = (data: any) => {
   return JSON.stringify(data, null, 2);
 };
+
+const organicResults = computed(() => (
+  Array.isArray(result.value?.organic) ? result.value.organic : []
+));
+
+watch(viewMode, saveSearchResultCache);
 </script>
 
 <style lang="less" scoped>
@@ -107,6 +169,13 @@ const formatResult = (data: any) => {
 
 .result-box {
   margin-top: 24px;
+
+  .result-count {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
   
   .result-header {
     display: flex;
@@ -210,6 +279,20 @@ const formatResult = (data: any) => {
       background: var(--control-bg);
       border-radius: var(--radius-md);
       border: 1px dashed var(--border-strong);
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .result-box {
+    .result-header {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 12px;
+
+      .view-toggle {
+        align-self: flex-start;
+      }
     }
   }
 }

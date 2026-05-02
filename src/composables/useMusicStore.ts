@@ -1,5 +1,7 @@
 import { ref } from 'vue';
 import { buildMediaObjectUrlFromHex, downloadMediaFromResponse } from '../utils/fileExport';
+import { readStorage, removeStorage } from '../utils/safeStorage';
+import { loadLocalLibraryRecords, saveLocalLibraryRecord, type LocalLibraryRecord } from '../utils/localLibrary';
 
 export interface MusicItem {
   id: string;
@@ -18,19 +20,53 @@ const currentMusic = ref<MusicItem | null>(null);
 const isPlaying = ref(false);
 const audioRef = ref<HTMLAudioElement | null>(null);
 
+const MIN_INLINE_AUDIO_SOURCE_LENGTH = 1024;
+
+function selectRestoredAudioUrl(record: LocalLibraryRecord) {
+  return [...record.media].reverse().find(isUsableAudioMedia)?.url || '';
+}
+
+function isUsableAudioMedia(media: LocalLibraryRecord['media'][number]) {
+  if (!media?.url) return false;
+  if (typeof media.source !== 'string') return true;
+  if (/^https?:\/\//i.test(media.source) || /^data:/i.test(media.source)) return true;
+  return media.source.replace(/\s/g, '').length >= MIN_INLINE_AUDIO_SOURCE_LENGTH;
+}
+
 export function useMusicStore() {
-  const init = () => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+  const init = async () => {
+    const saved = readStorage(STORAGE_KEY);
     if (saved) {
-      try {
-        localStorage.removeItem(STORAGE_KEY);
-      } catch (e) {
-        console.error('Failed to load music library:', e);
-      }
+      removeStorage(STORAGE_KEY);
     }
+    const records = await loadLocalLibraryRecords('audio');
+    const restored = records
+      .map(record => ({
+        id: record.id,
+        prompt: record.prompt,
+        lyrics: typeof (record.response as any)?.lyrics === 'string' ? (record.response as any).lyrics : '',
+        url: selectRestoredAudioUrl(record),
+        timestamp: Date.parse(record.createdAt) || Date.now(),
+      }))
+      .filter(item => item.url)
+      .slice(0, MAX_ITEMS);
+
+    musics.value.forEach(m => {
+      if (m.url.startsWith('blob:')) {
+        URL.revokeObjectURL(m.url);
+      }
+    });
+    musics.value = restored;
+    currentMusic.value = restored[0] || null;
+    isPlaying.value = false;
   };
 
   const addMusic = async (musicData: { id: string, prompt: string, lyrics: string, audioHex: string, timestamp: number }) => {
+    await saveLocalLibraryRecord('audio', musicData.prompt, {
+      data: { audio: musicData.audioHex },
+      lyrics: musicData.lyrics,
+      id: musicData.id,
+    });
     downloadMediaFromResponse(
       { data: { audio: musicData.audioHex } },
       { kind: 'audio', prompt: musicData.prompt, fallbackId: musicData.id }
@@ -79,11 +115,15 @@ export function useMusicStore() {
   };
 
   const clearLibrary = async () => {
-    musics.value.forEach(m => URL.revokeObjectURL(m.url));
+    musics.value.forEach(m => {
+      if (m.url.startsWith('blob:')) {
+        URL.revokeObjectURL(m.url);
+      }
+    });
     musics.value = [];
     currentMusic.value = null;
     isPlaying.value = false;
-    localStorage.removeItem(STORAGE_KEY);
+    removeStorage(STORAGE_KEY);
   };
 
   return {

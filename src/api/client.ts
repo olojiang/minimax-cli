@@ -1,14 +1,23 @@
 import axios from 'axios';
 import { logger } from '../utils/logger';
+import { readStorage, removeStorage, writeStorage } from '../utils/safeStorage';
 
 const DEFAULT_BASE_URL = '/api';
 const API_SOURCE = 'Minimax-Web';
+const DEFAULT_TEXT_CHAT_MODEL = 'MiniMax-M2.7';
+const DEFAULT_SPEECH_MODEL = 'speech-2.8-hd';
+const DEFAULT_SPEECH_VOICE = 'female-shaonv';
 
-let apiToken = (import.meta.env as any).MINIMAX_TOKEN || localStorage.getItem('minimax_token') || '';
+const envToken = (import.meta.env as Record<string, string | undefined>).MINIMAX_TOKEN || '';
+let apiToken = envToken || readStorage('minimax_token') || '';
 
 export function setApiToken(token: string) {
-  apiToken = token;
-  localStorage.setItem('minimax_token', token);
+  apiToken = token.trim();
+  if (apiToken) {
+    writeStorage('minimax_token', apiToken);
+  } else {
+    removeStorage('minimax_token');
+  }
 }
 
 export function getApiToken() {
@@ -16,14 +25,26 @@ export function getApiToken() {
 }
 
 function getHeaders() {
+  return {
+    ...getAuthHeaders(),
+    'Content-Type': 'application/json',
+  };
+}
+
+function getAuthHeaders() {
   if (!apiToken) {
     throw new Error('API Token is not set. Please enter it in the settings.');
   }
   return {
     Authorization: `Bearer ${apiToken}`,
     'MM-API-Source': API_SOURCE,
-    'Content-Type': 'application/json',
   };
+}
+
+function throwIfBaseRespError(payload: any) {
+  if (payload?.base_resp?.status_code && payload.base_resp.status_code !== 0) {
+    throw new Error(payload.base_resp.status_msg || 'API returned an error');
+  }
 }
 
 export async function searchWeb(query: string) {
@@ -41,9 +62,7 @@ export async function searchWeb(query: string) {
     
     // Axios throws on non-2xx statuses, but we also check MiniMax specific error codes
     const payload = response.data;
-    if (payload?.base_resp?.status_code && payload.base_resp.status_code !== 0) {
-       throw new Error(payload.base_resp.status_msg || 'API returned an error');
-    }
+    throwIfBaseRespError(payload);
     
     logger.success('Search completed successfully', payload);
     return payload;
@@ -91,9 +110,7 @@ export async function understandImage(prompt: string, imageInput: string | File)
     );
     
     const payload = response.data;
-    if (payload?.base_resp?.status_code && payload.base_resp.status_code !== 0) {
-       throw new Error(payload.base_resp.status_msg || 'API returned an error');
-    }
+    throwIfBaseRespError(payload);
     
     logger.success('Image understanding completed', payload);
     return payload;
@@ -107,17 +124,28 @@ export async function understandImage(prompt: string, imageInput: string | File)
 // New mmx capabilities
 // -------------------------------------------------------------
 
-export async function textChat(message: string) {
-  logger.info(`Starting text chat: ${message}`);
+export type ChatMessage = {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+};
+
+export async function textChat(message: string | ChatMessage[]) {
+  const messages = typeof message === 'string'
+    ? [{ role: 'user' as const, content: message }]
+    : message;
+  const latestMessage = messages[messages.length - 1]?.content || '';
+
+  logger.info(`Starting text chat: ${latestMessage}`);
   try {
     const response = await axios.post(
       `${DEFAULT_BASE_URL}/v1/text/chatcompletion_v2`,
       { 
-        model: 'abab6.5s-chat', 
-        messages: [{ role: 'user', content: message }] 
+        model: DEFAULT_TEXT_CHAT_MODEL, 
+        messages
       },
       { headers: getHeaders() }
     );
+    throwIfBaseRespError(response.data);
     logger.success('Text chat completed', response.data);
     return response.data;
   } catch (error: any) {
@@ -126,30 +154,163 @@ export async function textChat(message: string) {
   }
 }
 
-export async function generateImage(prompt: string) {
+export type ImageModel = 'image-01' | 'image-01-live';
+export type ImageAspectRatio = '1:1' | '16:9' | '4:3' | '3:2' | '2:3' | '3:4' | '9:16' | '21:9';
+export type ImageResponseFormat = 'url' | 'base64';
+export type ImageSubjectReferenceType = 'character';
+
+export type ImageGenerationOptions = {
+  model?: ImageModel;
+  aspectRatio?: ImageAspectRatio;
+  width?: number;
+  height?: number;
+  responseFormat?: ImageResponseFormat;
+  seed?: number;
+  n?: number;
+  promptOptimizer?: boolean;
+  watermark?: boolean;
+  subjectReference?: string | File;
+  subjectReferenceType?: ImageSubjectReferenceType;
+};
+
+export async function generateImage(prompt: string, options: ImageGenerationOptions = {}) {
+  if (!prompt || !prompt.trim()) {
+    throw new Error('Prompt is required');
+  }
+
   logger.info(`Starting image generation for: ${prompt}`);
   try {
+    const payload: Record<string, any> = {
+      model: options.model || 'image-01',
+      prompt: prompt.trim(),
+    };
+
+    if (options.aspectRatio) payload.aspect_ratio = options.aspectRatio;
+    if (options.width && options.height && !options.aspectRatio) {
+      payload.width = options.width;
+      payload.height = options.height;
+    }
+    if (options.responseFormat) payload.response_format = options.responseFormat;
+    if (Number.isInteger(options.seed)) payload.seed = options.seed;
+    if (options.n) payload.n = options.n;
+    if (typeof options.promptOptimizer === 'boolean') payload.prompt_optimizer = options.promptOptimizer;
+    if (typeof options.watermark === 'boolean') payload.aigc_watermark = options.watermark;
+
+    if (options.subjectReference) {
+      const imageFile = typeof options.subjectReference === 'string'
+        ? options.subjectReference
+        : await fileToDataUrl(options.subjectReference);
+      payload.subject_reference = [
+        {
+          type: options.subjectReferenceType || 'character',
+          image_file: imageFile,
+        },
+      ];
+    }
+
     const response = await axios.post(
       `${DEFAULT_BASE_URL}/v1/image_generation`,
-      { model: 'abab-image-v1', prompt },
+      payload,
       { headers: getHeaders() }
     );
-    logger.success('Image generation completed', response.data);
-    return response.data;
+    const data = response.data;
+    throwIfBaseRespError(data);
+    logger.success('Image generation completed', data);
+    return data;
   } catch (error: any) {
     logger.error('Image generation failed', error);
     throw error;
   }
 }
 
-export async function synthesizeSpeech(text: string, voiceId: string = 'zh-CN-XiaoxiaoNeural') {
+export type SpeechModel =
+  | 'speech-2.8-hd'
+  | 'speech-2.8-turbo'
+  | 'speech-2.6-hd'
+  | 'speech-2.6-turbo'
+  | 'speech-02-hd'
+  | 'speech-02-turbo'
+  | 'speech-01-hd'
+  | 'speech-01-turbo'
+  | 'speech-01';
+
+export type SpeechFormat = 'mp3' | 'pcm' | 'flac' | 'wav';
+export type VoiceType = 'system' | 'voice_cloning' | 'voice_generation' | 'all';
+
+export type SpeechSynthesisOptions = {
+  model?: SpeechModel;
+  voiceId?: string;
+  speed?: number;
+  vol?: number;
+  pitch?: number;
+  sampleRate?: number;
+  bitrate?: number;
+  format?: SpeechFormat;
+  channel?: number;
+  languageBoost?: string;
+};
+
+export type VoiceInfo = {
+  voice_id: string;
+  voice_name?: string;
+  description?: string[];
+  created_time?: string;
+};
+
+export type VoiceCloneOptions = {
+  fileId: number;
+  voiceId: string;
+  text?: string;
+  model?: SpeechModel;
+  promptAudioFileId?: number;
+  promptText?: string;
+  languageBoost?: string;
+  needNoiseReduction?: boolean;
+  needVolumeNormalization?: boolean;
+  aigcWatermark?: boolean;
+};
+
+export async function synthesizeSpeech(
+  text: string,
+  optionsOrVoiceId: SpeechSynthesisOptions | string = {}
+) {
+  const options = typeof optionsOrVoiceId === 'string'
+    ? { voiceId: optionsOrVoiceId }
+    : optionsOrVoiceId;
+  const voiceId = options.voiceId || DEFAULT_SPEECH_VOICE;
+
   logger.info(`Starting speech synthesis with voice ${voiceId}`);
   try {
+    const payload: any = {
+      model: options.model || DEFAULT_SPEECH_MODEL,
+      text,
+      voice_setting: {
+        voice_id: voiceId,
+        speed: options.speed ?? 1,
+        vol: options.vol ?? 1,
+        pitch: options.pitch ?? 0,
+      },
+      audio_setting: {
+        sample_rate: options.sampleRate ?? 32000,
+        bitrate: options.bitrate ?? 128000,
+        format: options.format || 'mp3',
+        channel: options.channel ?? 1,
+      },
+    };
+
+    // Keep top-level voice_id for backward compatibility with older MiniMax payloads/proxies.
+    payload.voice_id = voiceId;
+
+    if (options.languageBoost) {
+      payload.language_boost = options.languageBoost;
+    }
+
     const response = await axios.post(
       `${DEFAULT_BASE_URL}/v1/t2a_v2`,
-      { text, voice_id: voiceId, model: 'speech-01' },
+      payload,
       { headers: getHeaders() }
     );
+    throwIfBaseRespError(response.data);
     logger.success('Speech synthesis completed', response.data);
     return response.data;
   } catch (error: any) {
@@ -158,14 +319,165 @@ export async function synthesizeSpeech(text: string, voiceId: string = 'zh-CN-Xi
   }
 }
 
-export async function generateVideo(prompt: string, duration: number = 6) {
-  logger.info(`Starting video generation for: ${prompt} (${duration}s)`);
+export async function getVoices(voiceType: VoiceType = 'all') {
+  logger.info(`Fetching voices: ${voiceType}`);
   try {
     const response = await axios.post(
-      `${DEFAULT_BASE_URL}/v1/video_generation`,
-      { prompt, duration },
+      `${DEFAULT_BASE_URL}/v1/get_voice`,
+      { voice_type: voiceType },
       { headers: getHeaders() }
     );
+    throwIfBaseRespError(response.data);
+    logger.success('Voices fetched', response.data);
+    return response.data;
+  } catch (error: any) {
+    logger.error('Failed to fetch voices', error);
+    throw error;
+  }
+}
+
+export async function uploadVoiceCloneFile(file: File, purpose: 'voice_clone' | 'prompt_audio' = 'voice_clone') {
+  logger.info(`Uploading voice file: ${file.name}`);
+  try {
+    const formData = new FormData();
+    formData.append('purpose', purpose);
+    formData.append('file', file);
+
+    const response = await axios.post(
+      `${DEFAULT_BASE_URL}/v1/files/upload`,
+      formData,
+      { headers: getAuthHeaders() }
+    );
+    throwIfBaseRespError(response.data);
+    logger.success('Voice file uploaded', response.data);
+    return response.data;
+  } catch (error: any) {
+    logger.error('Voice file upload failed', error);
+    throw error;
+  }
+}
+
+export async function cloneVoice(options: VoiceCloneOptions) {
+  logger.info(`Cloning voice: ${options.voiceId}`);
+  try {
+    const payload: any = {
+      file_id: options.fileId,
+      voice_id: options.voiceId,
+      need_noise_reduction: options.needNoiseReduction ?? false,
+      need_volume_normalization: options.needVolumeNormalization ?? false,
+      aigc_watermark: options.aigcWatermark ?? false,
+    };
+
+    if (options.text?.trim()) {
+      payload.text = options.text.trim();
+      payload.model = options.model || DEFAULT_SPEECH_MODEL;
+    }
+
+    if (options.promptAudioFileId && options.promptText?.trim()) {
+      payload.clone_prompt = {
+        prompt_audio: options.promptAudioFileId,
+        prompt_text: options.promptText.trim(),
+      };
+    }
+
+    if (options.languageBoost) {
+      payload.language_boost = options.languageBoost;
+    }
+
+    const response = await axios.post(
+      `${DEFAULT_BASE_URL}/v1/voice_clone`,
+      payload,
+      { headers: getHeaders() }
+    );
+    throwIfBaseRespError(response.data);
+    logger.success('Voice cloned', response.data);
+    return response.data;
+  } catch (error: any) {
+    logger.error('Voice clone failed', error);
+    throw error;
+  }
+}
+
+export type VideoModel = 'MiniMax-Hailuo-2.3' | 'MiniMax-Hailuo-02' | 'T2V-01-Director' | 'T2V-01';
+export type VideoResolution = '720P' | '768P' | '1080P';
+
+export type VideoGenerationOptions = {
+  model?: VideoModel;
+  duration?: number;
+  resolution?: VideoResolution | string;
+  promptOptimizer?: boolean;
+  fastPretreatment?: boolean;
+  watermark?: boolean;
+};
+
+const isHailuoVideoModel = (model: VideoModel) => model === 'MiniMax-Hailuo-2.3' || model === 'MiniMax-Hailuo-02';
+
+const normalizeVideoResolution = (resolution?: VideoResolution | string): VideoResolution | undefined => {
+  if (!resolution) return undefined;
+
+  const normalized = resolution.toUpperCase();
+  if (normalized === '720P' || normalized === '768P' || normalized === '1080P') {
+    return normalized;
+  }
+
+  throw new Error(`Unsupported video resolution: ${resolution}`);
+};
+
+const validateVideoOptions = (model: VideoModel, duration: number, resolution?: VideoResolution) => {
+  if (isHailuoVideoModel(model)) {
+    if (duration !== 6 && duration !== 10) {
+      throw new Error(`${model} supports 6s or 10s video duration`);
+    }
+    if (duration === 10 && resolution && resolution !== '768P') {
+      throw new Error(`${model} supports only 768P resolution for 10s videos`);
+    }
+    if (duration === 6 && resolution && resolution !== '768P' && resolution !== '1080P') {
+      throw new Error(`${model} supports only 768P or 1080P resolution for 6s videos`);
+    }
+    return;
+  }
+
+  if (duration !== 6) {
+    throw new Error(`${model} supports only 6s video duration`);
+  }
+  if (resolution && resolution !== '720P' && resolution !== '1080P') {
+    throw new Error(`${model} supports only 720P or 1080P resolution`);
+  }
+};
+
+export async function generateVideo(prompt: string, optionsOrDuration: VideoGenerationOptions | number = {}) {
+  const options = typeof optionsOrDuration === 'number'
+    ? { duration: optionsOrDuration }
+    : optionsOrDuration;
+  const model = options.model || 'MiniMax-Hailuo-2.3';
+  const duration = options.duration ?? 6;
+  const resolution = normalizeVideoResolution(options.resolution);
+  validateVideoOptions(model, duration, resolution);
+
+  logger.info(`Starting video generation for: ${prompt} (${duration}s)`);
+  try {
+    const payload: any = {
+      model,
+      prompt,
+      duration,
+      prompt_optimizer: options.promptOptimizer ?? true,
+      watermark: options.watermark ?? false,
+    };
+
+    if (isHailuoVideoModel(model)) {
+      payload.fast_pretreatment = options.fastPretreatment ?? false;
+    }
+
+    if (resolution) {
+      payload.resolution = resolution;
+    }
+
+    const response = await axios.post(
+      `${DEFAULT_BASE_URL}/v1/video_generation`,
+      payload,
+      { headers: getHeaders() }
+    );
+    throwIfBaseRespError(response.data);
     logger.success('Video generation requested', response.data);
     return response.data;
   } catch (error: any) {
@@ -174,15 +486,47 @@ export async function generateVideo(prompt: string, duration: number = 6) {
   }
 }
 
-export async function generateMusic(prompt: string, lyrics?: string) {
+export type MusicFormat = 'mp3' | 'wav';
+
+export type MusicGenerationOptions = {
+  lyrics?: string;
+  lyricsOptimizer?: boolean;
+  instrumental?: boolean;
+  format?: MusicFormat;
+  sampleRate?: number;
+  bitrate?: number;
+};
+
+export async function generateMusic(prompt: string, lyricsOrOptions?: string | MusicGenerationOptions) {
+  const options = typeof lyricsOrOptions === 'string'
+    ? { lyrics: lyricsOrOptions }
+    : (lyricsOrOptions || {});
+
   logger.info(`Starting music generation for: ${prompt}`);
   try {
     const payload: any = { model: 'music-2.6', prompt };
-    if (lyrics) {
+    const lyrics = options.lyrics?.trim() || '';
+    const instrumental = options.instrumental ?? false;
+
+    payload.is_instrumental = instrumental;
+    payload.lyrics_optimizer = options.lyricsOptimizer ?? (!lyrics && !instrumental);
+
+    if (lyrics && !instrumental) {
       payload.lyrics = lyrics;
-    } else {
-      payload.lyrics = "";
-      payload.lyrics_optimizer = true;
+    } else if (!instrumental) {
+      payload.lyrics = '';
+    }
+
+    if (options.format) {
+      payload.format = options.format;
+    }
+
+    if (options.sampleRate) {
+      payload.sample_rate = options.sampleRate;
+    }
+
+    if (options.bitrate) {
+      payload.bitrate = options.bitrate;
     }
     
     const response = await axios.post(
@@ -192,9 +536,7 @@ export async function generateMusic(prompt: string, lyrics?: string) {
     );
     
     const data = response.data;
-    if (data?.base_resp?.status_code && data.base_resp.status_code !== 0) {
-      throw new Error(data.base_resp.status_msg || 'API returned an error');
-    }
+    throwIfBaseRespError(data);
     
     logger.success('Music generation requested', data);
     return data;

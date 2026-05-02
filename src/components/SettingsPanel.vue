@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { setApiToken, checkQuota, getApiToken } from '../api/client';
 import ApiProgress from './ApiProgress.vue';
 
@@ -99,6 +99,12 @@ const performCheckQuota = async () => {
     loading.value = false;
   }
 };
+
+onMounted(() => {
+  if (token.value.trim()) {
+    void performCheckQuota();
+  }
+});
 
 const formatResult = (data: any) => JSON.stringify(data, null, 2);
 

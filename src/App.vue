@@ -4,7 +4,7 @@
       <div class="brand-lockup">
         <span class="brand-mark" aria-hidden="true">M</span>
         <div>
-          <h1>MiniMax Console</h1>
+          <h1>MiniMax 纪</h1>
           <p>Creative API Workbench</p>
         </div>
       </div>
@@ -29,9 +29,10 @@
             v-for="tab in tabs"
             :key="tab.id"
             :class="{ active: currentTab === tab.id }"
-            @click="currentTab = tab.id"
-            @keyup.enter="currentTab = tab.id"
-            @keyup.space="currentTab = tab.id"
+            :aria-current="currentTab === tab.id ? 'page' : undefined"
+            @click="selectTab(tab.id)"
+            @keyup.enter="selectTab(tab.id)"
+            @keyup.space="selectTab(tab.id)"
             role="button"
             tabindex="0"
           >
@@ -84,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, type ComponentPublicInstance } from 'vue';
+import { ref, onMounted, onBeforeUnmount, type ComponentPublicInstance } from 'vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 import SearchPanel from './components/SearchPanel.vue';
 import VisionPanel from './components/VisionPanel.vue';
@@ -95,6 +96,7 @@ import VideoGenPanel from './components/VideoGenPanel.vue';
 import MusicGenPanel from './components/MusicGenPanel.vue';
 import LogViewer from './components/LogViewer.vue';
 import { useMusicStore } from './composables/useMusicStore';
+import { readStorage, writeStorage } from './utils/safeStorage';
 
 type Tab = 'settings' | 'search' | 'vision' | 'chat' | 'image' | 'speech' | 'video' | 'music';
 const currentTab = ref<Tab>('settings');
@@ -108,6 +110,24 @@ const tabs: Array<{ id: Tab; title: string; subtitle: string; mark: string }> = 
   { id: 'video', title: '视频生成', subtitle: 'Video', mark: 'VD' },
   { id: 'music', title: '音乐生成', subtitle: 'Music', mark: 'MU' },
 ];
+const tabIds = new Set<Tab>(tabs.map(tab => tab.id));
+
+const parseHashTab = (): Tab | null => {
+  const hash = window.location.hash.replace(/^#\/?/, '').trim();
+  return tabIds.has(hash as Tab) ? hash as Tab : null;
+};
+
+const syncTabFromHash = () => {
+  currentTab.value = parseHashTab() || 'settings';
+};
+
+const selectTab = (tab: Tab) => {
+  currentTab.value = tab;
+  const nextHash = `#${tab}`;
+  if (window.location.hash !== nextHash) {
+    window.location.hash = tab;
+  }
+};
 
 const { currentMusic, isPlaying, audioRef, init: initMusicStore } = useMusicStore();
 const bindAudioRef = (element: Element | ComponentPublicInstance | null) => {
@@ -128,16 +148,22 @@ const applyTheme = (dark: boolean) => {
 const toggleTheme = () => {
   isDark.value = !isDark.value;
   applyTheme(isDark.value);
-  localStorage.setItem('mmx-theme', isDark.value ? 'dark' : 'light');
+  writeStorage('mmx-theme', isDark.value ? 'dark' : 'light');
 };
 
 onMounted(() => {
-  initMusicStore();
-  const savedTheme = localStorage.getItem('mmx-theme');
+  syncTabFromHash();
+  window.addEventListener('hashchange', syncTabFromHash);
+  void initMusicStore();
+  const savedTheme = readStorage('mmx-theme');
   if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
     isDark.value = true;
     applyTheme(true);
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', syncTabFromHash);
 });
 </script>
 

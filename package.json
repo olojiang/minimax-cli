@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "vue-tsc -b",
+    "check": "pnpm lint && pnpm typecheck && pnpm test -- --run",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview"
   },

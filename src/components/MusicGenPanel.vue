@@ -2,19 +2,25 @@
   <div class="music-gen-panel panel">
     <div class="panel-header">
       <h2>音乐生成 (Music Generation)</h2>
-      <div class="stats" v-if="musics.length > 0">
+      <div
+        v-if="musics.length > 0"
+        class="stats"
+      >
         已生成 {{ musics.length }} 首
       </div>
     </div>
-    <QuotaSummary title="音乐生成配额" :model-patterns="['music-2.6']" />
+    <QuotaSummary
+      title="音乐生成配额"
+      :model-patterns="['music-2.6']"
+    />
 
     <div class="input-group">
       <div class="field">
         <label>风格描述</label>
-        <input 
+        <textarea
           v-model="prompt" 
-          type="text" 
           placeholder="例如：轻音乐、雨声、温柔女声" 
+          rows="3"
           :disabled="loading"
         />
       </div>
@@ -25,25 +31,126 @@
           placeholder="输入歌词，留空将由 AI 自动创作..." 
           :disabled="loading"
           rows="3"
-        ></textarea>
+        />
       </div>
-      <button class="btn btn-primary" :class="{ loading: loading }" @click="performGen" :disabled="loading || !prompt.trim()">
-        <span class="icon" aria-hidden="true">♪</span>
+      <div class="music-options">
+        <label class="check-field">
+          <input
+            v-model="instrumental"
+            type="checkbox"
+            :disabled="loading"
+          >
+          纯音乐
+        </label>
+        <label class="check-field">
+          <input
+            v-model="lyricsOptimizer"
+            type="checkbox"
+            :disabled="loading || instrumental"
+          >
+          优化/生成歌词
+        </label>
+        <div class="field compact">
+          <label for="music-format">格式</label>
+          <select
+            id="music-format"
+            v-model="format"
+            :disabled="loading"
+          >
+            <option value="mp3">
+              mp3
+            </option>
+            <option value="wav">
+              wav
+            </option>
+          </select>
+        </div>
+        <div class="field compact">
+          <label for="music-sample-rate">采样率</label>
+          <select
+            id="music-sample-rate"
+            v-model.number="sampleRate"
+            :disabled="loading"
+          >
+            <option :value="32000">
+              32000
+            </option>
+            <option :value="44100">
+              44100
+            </option>
+            <option :value="48000">
+              48000
+            </option>
+          </select>
+        </div>
+        <div class="field compact">
+          <label for="music-bitrate">码率</label>
+          <select
+            id="music-bitrate"
+            v-model.number="bitrate"
+            :disabled="loading"
+          >
+            <option :value="128000">
+              128k
+            </option>
+            <option :value="192000">
+              192k
+            </option>
+            <option :value="256000">
+              256k
+            </option>
+          </select>
+        </div>
+      </div>
+      <button
+        class="btn btn-primary"
+        :class="{ loading: loading }"
+        :disabled="loading || !prompt.trim()"
+        @click="performGen"
+      >
+        <span
+          class="icon"
+          aria-hidden="true"
+        >♪</span>
         {{ loading ? '正在谱曲...' : '开始生成音乐' }}
       </button>
     </div>
-    <ApiProgress v-if="loading" title="正在生成音乐" detail="音乐任务已提交，正在合成音频并写入本地曲库" />
+    <ApiProgress
+      v-if="loading"
+      title="正在生成音乐"
+      detail="音乐任务已提交，正在合成音频并写入本地曲库"
+    />
+    <p
+      v-if="error"
+      class="error-message"
+      role="alert"
+    >
+      {{ error }}
+    </p>
 
     <!-- 当前选中 / 正在播放 -->
-    <div v-if="currentMusic" class="now-playing">
+    <div
+      v-if="currentMusic"
+      class="now-playing"
+    >
       <div class="player-card">
         <div class="music-info">
-          <div class="music-icon" aria-hidden="true">♪</div>
+          <div
+            class="music-icon"
+            aria-hidden="true"
+          >
+            ♪
+          </div>
           <div class="text-content">
             <h3>{{ currentMusic.prompt }}</h3>
-            <p class="timestamp">{{ formatDate(currentMusic.timestamp) }}</p>
+            <p class="timestamp">
+              {{ formatDate(currentMusic.timestamp) }}
+            </p>
           </div>
-          <button class="play-status-btn" @click="togglePlay">
+          <button
+            class="play-status-btn"
+            @click="togglePlay"
+          >
             {{ isPlaying ? 'Pause' : 'Play' }}
           </button>
         </div>
@@ -54,10 +161,18 @@
     </div>
 
     <!-- 音乐库 -->
-    <div v-if="musics.length > 0" class="music-library">
+    <div
+      v-if="musics.length > 0"
+      class="music-library"
+    >
       <div class="section-header">
         <h3>音乐库 (最近 {{ musics.length }} 首)</h3>
-        <button class="text-btn" @click="clearLibrary">清空列表</button>
+        <button
+          class="text-btn"
+          @click="clearLibrary"
+        >
+          清空列表
+        </button>
       </div>
       <div class="music-grid">
         <div 
@@ -73,8 +188,12 @@
             <span v-else>MU</span>
           </div>
           <div class="item-info">
-            <div class="item-prompt">{{ music.prompt }}</div>
-            <div class="item-meta">{{ formatDate(music.timestamp) }}</div>
+            <div class="item-prompt">
+              {{ music.prompt }}
+            </div>
+            <div class="item-meta">
+              {{ formatDate(music.timestamp) }}
+            </div>
           </div>
         </div>
       </div>
@@ -93,7 +212,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { generateMusic } from '../api/client';
+import { generateMusic, type MusicFormat } from '../api/client';
 import InputHistory from './InputHistory.vue';
 import ApiProgress from './ApiProgress.vue';
 import QuotaSummary from './QuotaSummary.vue';
@@ -103,6 +222,12 @@ import { useMusicStore, type MusicItem } from '../composables/useMusicStore';
 const prompt = ref('');
 const lyrics = ref('');
 const loading = ref(false);
+const error = ref('');
+const instrumental = ref(false);
+const lyricsOptimizer = ref(true);
+const format = ref<MusicFormat>('mp3');
+const sampleRate = ref(44100);
+const bitrate = ref(192000);
 
 const { 
   musics, 
@@ -131,17 +256,25 @@ const selectMusic = (music: MusicItem) => {
 const performGen = async () => {
   if (!prompt.value.trim() || loading.value) return;
   loading.value = true;
+  error.value = '';
   
   addToHistory(prompt.value);
   
   try {
-    const result = await generateMusic(prompt.value, lyrics.value);
+    const result = await generateMusic(prompt.value, {
+      lyrics: lyrics.value,
+      lyricsOptimizer: instrumental.value ? false : lyricsOptimizer.value,
+      instrumental: instrumental.value,
+      format: format.value,
+      sampleRate: sampleRate.value,
+      bitrate: bitrate.value,
+    });
     
     if (result?.data?.audio) {
       const newMusicData = {
         id: result.trace_id || Math.random().toString(36).substr(2, 9),
         prompt: prompt.value,
-        lyrics: lyrics.value,
+        lyrics: instrumental.value ? '' : lyrics.value,
         audioHex: result.data.audio,
         timestamp: Date.now()
       };
@@ -149,10 +282,12 @@ const performGen = async () => {
       const added = await addMusic(newMusicData);
       playMusic(added);
       
-      lyrics.value = '';
+      if (!instrumental.value) {
+        lyrics.value = '';
+      }
     }
-  } catch (error) {
-    console.error('Generation failed:', error);
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '音乐生成失败，请检查设置或稍后重试。';
   } finally {
     loading.value = false;
   }
@@ -177,6 +312,42 @@ const performGen = async () => {
     border: 1px solid var(--border-subtle);
     padding: 4px 12px;
     border-radius: 20px;
+  }
+}
+
+.music-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.field.compact {
+  margin-bottom: 0;
+
+  select {
+    min-height: 46px;
+    padding: 10px 12px;
+    color: var(--text-primary);
+    background: var(--control-bg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+  }
+}
+
+.check-field {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+@media (max-width: 1000px) {
+  .music-options {
+    grid-template-columns: 1fr;
   }
 }
 

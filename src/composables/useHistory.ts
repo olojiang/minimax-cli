@@ -1,21 +1,21 @@
 import { ref, watch, onMounted } from 'vue';
+import { readJsonStorage, writeJsonStorage } from '../utils/safeStorage';
 
 export function useHistory(storageKey: string, maxItems: number = 10) {
   const history = ref<string[]>([]);
 
   onMounted(() => {
-    const saved = localStorage.getItem(storageKey);
+    const saved = readJsonStorage<string[]>(
+      storageKey,
+      (value): value is string[] => Array.isArray(value) && value.every(item => typeof item === 'string'),
+    );
     if (saved) {
-      try {
-        history.value = JSON.parse(saved);
-      } catch (e) {
-        // ignore
-      }
+      history.value = saved.slice(0, maxItems);
     }
   });
 
   watch(history, (newHistory) => {
-    localStorage.setItem(storageKey, JSON.stringify(newHistory));
+    writeJsonStorage(storageKey, newHistory);
   }, { deep: true });
 
   const addToHistory = (query: string) => {
