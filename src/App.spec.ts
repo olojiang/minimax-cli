@@ -21,7 +21,11 @@ const stubs = {
   SpeechPanel: { template: '<section data-test="speech-panel" />' },
   VideoGenPanel: { template: '<section data-test="video-panel" />' },
   MusicGenPanel: { template: '<section data-test="music-panel" />' },
-  LogViewer: { template: '<aside data-test="log-viewer" />' },
+  LogViewer: {
+    props: ['collapsed'],
+    emits: ['update:collapsed'],
+    template: '<aside data-test="log-viewer" :data-collapsed="String(collapsed)" @click="$emit(\'update:collapsed\', true)" />',
+  },
 };
 
 const mountApp = () => mount(App, {
@@ -68,5 +72,23 @@ describe('App.vue hash tab routing', () => {
     await nextTick();
 
     expect(wrapper.find('[data-test="music-panel"]').exists()).toBe(true);
+  });
+
+  it('restores the collapsed log viewer state from storage', () => {
+    localStorage.setItem('mmx_log_viewer_collapsed', 'true');
+
+    const wrapper = mountApp();
+
+    expect(wrapper.find('.right-pane').classes()).toContain('is-collapsed');
+    expect(wrapper.find('[data-test="log-viewer"]').attributes('data-collapsed')).toBe('true');
+  });
+
+  it('persists collapsed log viewer changes', async () => {
+    const wrapper = mountApp();
+
+    await wrapper.find('[data-test="log-viewer"]').trigger('click');
+
+    expect(wrapper.find('.right-pane').classes()).toContain('is-collapsed');
+    expect(localStorage.getItem('mmx_log_viewer_collapsed')).toBe('true');
   });
 });

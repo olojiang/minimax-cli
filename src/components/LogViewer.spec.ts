@@ -39,4 +39,27 @@ describe('LogViewer.vue', () => {
     expect(wrapper.findAll('.log-entry').length).toBe(0);
     expect(logger.getLogs().length).toBe(0);
   });
+
+  it('emits collapse changes from the header control', async () => {
+    const wrapper = mount(LogViewer);
+
+    await wrapper.find('.collapse-btn').trigger('click');
+
+    expect(wrapper.emitted('update:collapsed')).toEqual([[true]]);
+  });
+
+  it('shows a floating restore control while collapsed', async () => {
+    const wrapper = mount(LogViewer, {
+      props: {
+        collapsed: true,
+      },
+    });
+
+    expect(wrapper.find('.log-content').exists()).toBe(false);
+    expect(wrapper.find('.log-float-btn').exists()).toBe(true);
+
+    await wrapper.find('.log-float-btn').trigger('dblclick');
+
+    expect(wrapper.emitted('update:collapsed')).toEqual([[false]]);
+  });
 });

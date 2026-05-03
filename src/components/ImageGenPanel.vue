@@ -6,6 +6,49 @@
       :model-patterns="['image-01', 'abab-image']"
     />
     <div class="input-group">
+      <div class="prompt-sample-picker">
+        <div class="sample-controls">
+          <div class="field sample-search-field">
+            <label for="image-prompt-sample-search">提示词样例</label>
+            <input
+              id="image-prompt-sample-search"
+              v-model="sampleSearch"
+              type="search"
+              placeholder="搜索标题、分类或提示词内容"
+              :disabled="loading"
+            >
+          </div>
+          <div class="field sample-select-field">
+            <label for="image-prompt-sample">选择样例</label>
+            <select
+              id="image-prompt-sample"
+              v-model="selectedSampleId"
+              :disabled="loading || filteredPromptSamples.length === 0"
+              @change="applySelectedPromptSample"
+            >
+              <option value="">
+                {{ filteredPromptSamples.length > 0 ? `选择一个样例（${filteredPromptSamples.length}）` : '没有匹配的样例' }}
+              </option>
+              <option
+                v-for="sample in filteredPromptSamples"
+                :key="sample.id"
+                :value="sample.id"
+              >
+                {{ sample.number }}｜{{ sample.title }} · {{ sample.category }}
+              </option>
+            </select>
+          </div>
+        </div>
+        <div
+          v-if="selectedPromptSample"
+          class="sample-preview"
+        >
+          <div>
+            <strong>{{ selectedPromptSample.number }}｜{{ selectedPromptSample.title }}</strong>
+            <span>{{ selectedPromptSample.category }}</span>
+          </div>
+        </div>
+      </div>
       <textarea
         v-model="prompt" 
         placeholder="输入画面描述，例如：一只穿宇航服的猫咪在太空中" 
@@ -431,6 +474,7 @@ import {
   saveLocalLibraryRecord,
   type LocalLibraryRecord,
 } from '../utils/localLibrary';
+import { imagePromptSamples } from '../data/imagePromptSamples';
 
 type ImageMode = 'text' | 'reference';
 type GeneratedImage = {
@@ -462,6 +506,8 @@ const watermark = ref(false);
 const customSize = ref(false);
 const width = ref(1024);
 const height = ref(1024);
+const sampleSearch = ref('');
+const selectedSampleId = ref('');
 const referenceFile = ref<File | null>(null);
 const referencePreviewUrl = ref('');
 const previewImage = ref<GeneratedImage | null>(null);
@@ -479,6 +525,29 @@ const image01Ratios: ImageAspectRatio[] = ['1:1', '16:9', '4:3', '3:2', '2:3', '
 const imageLiveRatios: ImageAspectRatio[] = ['1:1', '16:9', '4:3', '3:2', '2:3', '3:4', '9:16'];
 
 const availableAspectRatios = computed(() => (model.value === 'image-01-live' ? imageLiveRatios : image01Ratios));
+const normalizedSampleSearch = computed(() => sampleSearch.value.trim().toLocaleLowerCase());
+const filteredPromptSamples = computed(() => {
+  const query = normalizedSampleSearch.value;
+  if (!query) return imagePromptSamples;
+
+  return imagePromptSamples.filter((sample) => {
+    const searchable = [
+      sample.number,
+      sample.title,
+      sample.category,
+      sample.prompt,
+    ].join('\n').toLocaleLowerCase();
+    return searchable.includes(query);
+  });
+});
+const selectedPromptSample = computed(() => (
+  imagePromptSamples.find(sample => sample.id === selectedSampleId.value) || null
+));
+
+const getEditablePromptSampleText = (samplePrompt: string) => {
+  const exampleMatch = samplePrompt.match(/(?:^|\n)\s*示例[:：]\s*([\s\S]+)$/);
+  return (exampleMatch?.[1] || samplePrompt).trim();
+};
 
 const isImageGenerationRecordArray = (value: unknown): value is ImageGenerationRecord[] => (
   Array.isArray(value)
@@ -542,6 +611,12 @@ watch(model, () => {
 
 const selectHistory = (item: string) => {
   prompt.value = item;
+};
+
+const applySelectedPromptSample = () => {
+  if (!selectedPromptSample.value) return;
+  prompt.value = getEditablePromptSampleText(selectedPromptSample.value.prompt);
+  error.value = '';
 };
 
 const setReferenceFile = async (file: File) => {
@@ -848,6 +923,56 @@ const buildImageFilename = (index: number) => {
   gap: 14px;
 }
 
+.prompt-sample-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, var(--accent-soft), transparent 62%),
+    var(--control-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.sample-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1.3fr);
+  gap: 14px;
+}
+
+.sample-search-field,
+.sample-select-field {
+  min-width: 0;
+}
+
+.sample-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+
+  strong,
+  span {
+    display: block;
+  }
+
+  strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  span {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 650;
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -867,6 +992,7 @@ const buildImageFilename = (index: number) => {
     background: var(--control-bg);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-md);
+    min-width: 0;
   }
 }
 
@@ -1330,6 +1456,7 @@ const buildImageFilename = (index: number) => {
 }
 
 @media (max-width: 800px) {
+  .sample-controls,
   .generation-options,
   .size-options,
   .reference-options {

@@ -407,7 +407,47 @@ export type VideoGenerationOptions = {
   resolution?: VideoResolution | string;
   promptOptimizer?: boolean;
   fastPretreatment?: boolean;
-  watermark?: boolean;
+};
+
+export type VideoTaskStatus = 'Preparing' | 'Queueing' | 'Processing' | 'Success' | 'Fail';
+
+export type VideoTaskQueryResponse = {
+  task_id: string;
+  status: VideoTaskStatus;
+  file_id?: string;
+  video_width?: number;
+  video_height?: number;
+  base_resp?: {
+    status_code?: number;
+    status_msg?: string;
+  };
+};
+
+export type RetrievedFileResponse = {
+  file?: {
+    file_id?: string | number;
+    bytes?: number;
+    created_at?: number;
+    filename?: string;
+    purpose?: string;
+    download_url?: string;
+  };
+  base_resp?: {
+    status_code?: number;
+    status_msg?: string;
+  };
+};
+
+export type VideoGenerationResult = {
+  task: VideoTaskQueryResponse;
+  file: NonNullable<RetrievedFileResponse['file']>;
+  video_url: string;
+};
+
+export type WaitForVideoGenerationOptions = {
+  intervalMs?: number;
+  timeoutMs?: number;
+  onStatus?: (task: VideoTaskQueryResponse) => void;
 };
 
 const isHailuoVideoModel = (model: VideoModel) => model === 'MiniMax-Hailuo-2.3' || model === 'MiniMax-Hailuo-02';
@@ -461,7 +501,6 @@ export async function generateVideo(prompt: string, optionsOrDuration: VideoGene
       prompt,
       duration,
       prompt_optimizer: options.promptOptimizer ?? true,
-      watermark: options.watermark ?? false,
     };
 
     if (isHailuoVideoModel(model)) {
@@ -484,6 +523,103 @@ export async function generateVideo(prompt: string, optionsOrDuration: VideoGene
     logger.error('Video generation failed', error);
     throw error;
   }
+}
+
+export async function queryVideoGenerationTask(taskId: string): Promise<VideoTaskQueryResponse> {
+  if (!taskId.trim()) {
+    throw new Error('Video task ID is required');
+  }
+
+  try {
+    const response = await axios.get(
+      `${DEFAULT_BASE_URL}/v1/query/video_generation`,
+      {
+        headers: getHeaders(),
+        params: { task_id: taskId.trim() },
+      }
+    );
+    throwIfBaseRespError(response.data);
+    return response.data;
+  } catch (error: any) {
+    logger.error('Video task query failed', error);
+    throw error;
+  }
+}
+
+export async function retrieveFile(fileId: string | number): Promise<RetrievedFileResponse> {
+  const normalizedFileId = String(fileId).trim();
+  if (!normalizedFileId) {
+    throw new Error('File ID is required');
+  }
+
+  try {
+    const response = await axios.get(
+      `${DEFAULT_BASE_URL}/v1/files/retrieve`,
+      {
+        headers: getHeaders(),
+        params: { file_id: normalizedFileId },
+      }
+    );
+    throwIfBaseRespError(response.data);
+    return response.data;
+  } catch (error: any) {
+    logger.error('File retrieval failed', error);
+    throw error;
+  }
+}
+
+export async function waitForVideoGenerationResult(
+  taskId: string,
+  options: WaitForVideoGenerationOptions = {},
+): Promise<VideoGenerationResult> {
+  const intervalMs = options.intervalMs ?? 5_000;
+  const timeoutMs = options.timeoutMs ?? 10 * 60_000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    const task = await queryVideoGenerationTask(taskId);
+    options.onStatus?.(task);
+
+    if (task.status === 'Fail') {
+      throw new Error(task.base_resp?.status_msg || 'Video generation failed');
+    }
+
+    if (task.status === 'Success') {
+      if (!task.file_id) {
+        throw new Error('Video generation succeeded but did not return a file ID');
+      }
+      const fileResponse = await retrieveFile(task.file_id);
+      const file = fileResponse.file;
+      const videoUrl = normalizeDownloadUrl(file?.download_url || '');
+      if (!file || !videoUrl) {
+        throw new Error('Video file retrieval did not return a download URL');
+      }
+      return {
+        task,
+        file: {
+          ...file,
+          download_url: videoUrl,
+        },
+        video_url: videoUrl,
+      };
+    }
+
+    await sleep(intervalMs);
+  }
+
+  throw new Error('Timed out waiting for video generation to finish');
+}
+
+function normalizeDownloadUrl(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith('//')) return `https:${trimmed}`;
+  return `https://${trimmed}`;
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export type MusicFormat = 'mp3' | 'wav';

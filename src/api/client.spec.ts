@@ -5,12 +5,15 @@ import {
   generateMusic,
   generateVideo,
   getVoices,
+  queryVideoGenerationTask,
+  retrieveFile,
   searchWeb,
   setApiToken,
   synthesizeSpeech,
   textChat,
   understandImage,
-  uploadVoiceCloneFile
+  uploadVoiceCloneFile,
+  waitForVideoGenerationResult
 } from './client';
 import { logger } from '../utils/logger';
 import axios from 'axios';
@@ -359,10 +362,10 @@ describe('API Client', () => {
           duration: 6,
           prompt_optimizer: true,
           fast_pretreatment: false,
-          watermark: false
         }),
         expect.anything()
       );
+      expect((axios.post as any).mock.calls[0][1]).not.toHaveProperty('watermark');
       expect(result).toEqual(mockResponse.data);
     });
 
@@ -375,8 +378,7 @@ describe('API Client', () => {
         duration: 10,
         resolution: '768P',
         promptOptimizer: false,
-        fastPretreatment: true,
-        watermark: true
+        fastPretreatment: true
       });
 
       expect(axios.post).toHaveBeenCalledWith(
@@ -386,11 +388,11 @@ describe('API Client', () => {
           duration: 10,
           resolution: '768P',
           prompt_optimizer: false,
-          fast_pretreatment: true,
-          watermark: true
+          fast_pretreatment: true
         }),
         expect.anything()
       );
+      expect((axios.post as any).mock.calls[0][1]).not.toHaveProperty('watermark');
     });
 
     it('should normalize legacy lowercase resolution values', async () => {
@@ -420,6 +422,77 @@ describe('API Client', () => {
       })).rejects.toThrow('supports only 768P');
 
       expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it('should query video task status', async () => {
+      const mockResponse = {
+        data: {
+          task_id: 'task-1',
+          status: 'Processing',
+          base_resp: { status_code: 0, status_msg: 'success' }
+        }
+      };
+      (axios.get as any).mockResolvedValue(mockResponse);
+
+      const result = await queryVideoGenerationTask('task-1');
+
+      expect(axios.get).toHaveBeenCalledWith(
+        '/api/v1/query/video_generation',
+        expect.objectContaining({
+          params: { task_id: 'task-1' }
+        })
+      );
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('should retrieve a generated video file', async () => {
+      const mockResponse = {
+        data: {
+          file: {
+            file_id: 'file-1',
+            download_url: 'https://cdn.example.com/video.mp4'
+          },
+          base_resp: { status_code: 0, status_msg: 'success' }
+        }
+      };
+      (axios.get as any).mockResolvedValue(mockResponse);
+
+      const result = await retrieveFile('file-1');
+
+      expect(axios.get).toHaveBeenCalledWith(
+        '/api/v1/files/retrieve',
+        expect.objectContaining({
+          params: { file_id: 'file-1' }
+        })
+      );
+      expect(result).toEqual(mockResponse.data);
+    });
+
+    it('should wait for video completion and return a playable URL', async () => {
+      (axios.get as any)
+        .mockResolvedValueOnce({
+          data: {
+            task_id: 'task-1',
+            status: 'Success',
+            file_id: 'file-1',
+            base_resp: { status_code: 0, status_msg: 'success' }
+          }
+        })
+        .mockResolvedValueOnce({
+          data: {
+            file: {
+              file_id: 'file-1',
+              download_url: 'cdn.example.com/video.mp4'
+            },
+            base_resp: { status_code: 0, status_msg: 'success' }
+          }
+        });
+
+      const result = await waitForVideoGenerationResult('task-1', { intervalMs: 1 });
+
+      expect(result.video_url).toBe('https://cdn.example.com/video.mp4');
+      expect(result.file.download_url).toBe('https://cdn.example.com/video.mp4');
+      expect(axios.get).toHaveBeenCalledTimes(2);
     });
   });
 

@@ -171,6 +171,39 @@ describe('ImageGenPanel.vue', () => {
     expect(generateImage).not.toHaveBeenCalled();
   });
 
+  it('searches and applies built-in text-to-image prompt samples', async () => {
+    const wrapper = mount(ImageGenPanel);
+
+    await wrapper.find('#image-prompt-sample-search').setValue('高端无线耳机');
+
+    const options = wrapper.findAll('#image-prompt-sample option');
+    expect(options.some(option => option.text().includes('7.19｜高端无线耳机产品图'))).toBe(true);
+    expect(options.some(option => option.text().includes('参考图'))).toBe(false);
+
+    await wrapper.find('#image-prompt-sample').setValue('prompt-7.19');
+
+    const textarea = wrapper.find('textarea').element as HTMLTextAreaElement;
+    expect(textarea.value).toContain('一张高端无线降噪耳机的商业产品照片');
+    expect(textarea.value).toContain('哑光午夜蓝');
+    expect(wrapper.find('.sample-preview').text()).toContain('7.19｜高端无线耳机产品图');
+    expect(generateImage).not.toHaveBeenCalled();
+  });
+
+  it('applies only the editable example text from prompt template samples', async () => {
+    const wrapper = mount(ImageGenPanel);
+
+    await wrapper.find('#image-prompt-sample-search').setValue('人像摄影英文模板');
+    await wrapper.find('#image-prompt-sample').setValue('prompt-12.3');
+
+    const textarea = wrapper.find('textarea').element as HTMLTextAreaElement;
+    expect(textarea.value).toBe('Business woman portrait photography, modern office background, natural lighting, shot on Canon EOS R5, 85mm lens, shallow depth of field, professional color grading, high resolution, 4k。');
+    expect(textarea.value).not.toContain('[主题]');
+    expect(textarea.value).not.toContain('示例：');
+    expect(wrapper.find('.sample-preview').text()).toContain('12.3｜人像摄影英文模板');
+    expect(wrapper.find('.sample-preview').text()).not.toContain('Business woman portrait photography');
+    expect(generateImage).not.toHaveBeenCalled();
+  });
+
   it('restores generated image history after refresh', async () => {
     const imageUrl = 'https://example.com/restored.jpeg';
     localStorage.setItem('mmx_image_generation_history', JSON.stringify([

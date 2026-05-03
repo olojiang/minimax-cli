@@ -77,8 +77,11 @@
         <MusicGenPanel v-if="currentTab === 'music'" />
       </div>
       
-      <div class="right-pane">
-        <LogViewer />
+      <div class="right-pane" :class="{ 'is-collapsed': isLogViewerCollapsed }">
+        <LogViewer
+          :collapsed="isLogViewerCollapsed"
+          @update:collapsed="setLogViewerCollapsed"
+        />
       </div>
     </main>
   </div>
@@ -132,6 +135,14 @@ const selectTab = (tab: Tab) => {
 const { currentMusic, isPlaying, audioRef, init: initMusicStore } = useMusicStore();
 const bindAudioRef = (element: Element | ComponentPublicInstance | null) => {
   audioRef.value = element as HTMLAudioElement | null;
+};
+
+const logViewerStorageKey = 'mmx_log_viewer_collapsed';
+const isLogViewerCollapsed = ref(readStorage(logViewerStorageKey) === 'true');
+
+const setLogViewerCollapsed = (collapsed: boolean) => {
+  isLogViewerCollapsed.value = collapsed;
+  writeStorage(logViewerStorageKey, collapsed ? 'true' : 'false');
 };
 
 // Theme Toggle Logic
@@ -454,6 +465,17 @@ onBeforeUnmount(() => {
     box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
+    transition: flex-basis var(--motion-med), min-width var(--motion-med), width var(--motion-med), opacity var(--motion-fast), border-color var(--motion-med), box-shadow var(--motion-med);
+
+    &.is-collapsed {
+      flex: 0 0 0;
+      width: 0;
+      min-width: 0;
+      border-color: transparent;
+      box-shadow: none;
+      overflow: visible;
+      opacity: 1;
+    }
   }
 }
 
@@ -506,6 +528,13 @@ onBeforeUnmount(() => {
     
     .right-pane {
       height: 400px; /* Fixed height for log viewer on mobile */
+
+      &.is-collapsed {
+        width: 0;
+        height: 0;
+        min-height: 0;
+        align-self: flex-end;
+      }
     }
   }
 }

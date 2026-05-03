@@ -1,5 +1,94 @@
-# Vue 3 + TypeScript + Vite
+# MiniMax CLI Web Workbench
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+MiniMax CLI Web Workbench 是一个基于 Vue 3、TypeScript 和 Vite 的本地网页工作台，用来把 MiniMax 常用 API 能力集中到一个可视化界面里。它面向日常调试、内容生成、配额检查和结果复用：左侧切换功能，中间完成输入与预览，右侧追踪所有请求日志。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## 功能说明
+
+- 设置与配额：保存 `MINIMAX_TOKEN`，检查当前账号下各模型额度。
+- 联网搜索：调用 MiniMax 搜索能力，保留查询历史和原始响应日志。
+- 图像理解：支持图片 URL 或本地文件输入，按提示词分析图像内容。
+- 文本对话：使用 MiniMax 文本模型完成聊天式请求。
+- 图像生成：支持模型、比例、尺寸、数量、种子、提示词优化、水印和主体参考图等参数。
+- 语音合成：支持语音模型、音色、语速、音量、音调、格式、采样率、码率、声道和语言增强等参数，并支持本地结果库。
+- 视频生成：支持 Hailuo 与 T2V 模型、时长、分辨率、提示词优化和快速预处理等选项，并保留生成历史。
+- 音乐生成：支持提示词、歌词、纯音乐、歌词优化、音频格式和采样参数，并提供全局迷你播放器。
+- 本地结果库：开发服务会把图片、音频、视频结果保存到 `.mmx-library/`，刷新后可以恢复历史记录。
+- 全局运行日志：所有请求都会输出 `[INFO]`、`[SUCCESS]`、`[WARN]`、`[ERROR]` 日志，并展示原始响应数据。
+- 日志折叠：运行日志面板可以折叠成右下角漂浮图标，双击图标恢复展开；折叠状态写入 `localStorage`，刷新页面后保持不变，折叠时会释放更多工作区空间。
+- 主题记忆：深色/浅色主题会持久化保存。
+
+## 界面介绍
+
+应用采用三栏布局：
+
+- 左侧导航栏：切换设置、搜索、图像理解、聊天、图像生成、语音、视频、音乐等面板。
+- 中间工作区：填写参数、提交请求、预览生成结果、管理输入历史和生成历史。
+- 右侧日志栏：查看执行过程、错误原因、成功响应和原始 payload。
+
+日志栏顶部有“折叠”按钮和“清空”按钮。折叠后右侧栏会收起，只保留右下角日志图标；双击该图标即可恢复日志栏。
+
+## 使用说明
+
+### 1. 安装依赖
+
+```bash
+pnpm install
+```
+
+### 2. 配置 Token
+
+推荐在界面里的“设置与配额”面板输入 `MINIMAX_TOKEN`。应用会把 Token 保存在浏览器本地存储中。
+
+也可以在本地环境变量中设置：
+
+```bash
+MINIMAX_TOKEN=your_token_here pnpm dev
+```
+
+### 3. 启动开发服务
+
+```bash
+pnpm dev
+```
+
+默认地址：
+
+```text
+http://localhost:21234/
+```
+
+Vite 开发服务会代理 `/api` 到 MiniMax API，并提供 `/local-library/*` 本地结果库接口。
+
+### 4. 基本操作流程
+
+1. 打开“设置与配额”，输入 Token 并点击检查配额。
+2. 在左侧选择需要的能力面板。
+3. 填写提示词、模型和相关参数。
+4. 点击生成或提交按钮。
+5. 在中间区域查看结果，在右侧日志栏查看请求过程和原始响应。
+6. 如果需要更多工作区空间，点击日志栏顶部折叠按钮；需要排查问题时双击右下角日志图标恢复。
+
+## 常用命令
+
+```bash
+pnpm dev          # 启动本地开发服务
+pnpm lint         # 运行 ESLint
+pnpm typecheck    # 运行 Vue/TypeScript 类型检查
+pnpm test -- --run # 运行单元测试
+pnpm check        # 顺序运行 lint、typecheck、test
+pnpm build        # 类型检查并构建生产包
+```
+
+## 数据存储
+
+- `minimax_token`：浏览器本地存储的 API Token。
+- `mmx-theme`：主题偏好。
+- `mmx_log_viewer_collapsed`：运行日志折叠状态。
+- `mmx_*_history`：各功能面板的输入历史。
+- `.mmx-library/`：开发服务保存的本地媒体结果库。
+
+## 注意事项
+
+- 本项目是本地开发工作台，不要把真实 Token 提交到仓库。
+- `.mmx-library/` 中可能包含生成结果文件，按需备份或清理。
+- 如果请求失败，先查看右侧运行日志中的错误信息和原始响应，再检查 Token、额度和模型权限。
