@@ -1,35 +1,105 @@
 {
   "name": "minimax-web",
+  "productName": "Minimax 纪",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "lsof -ti tcp:21234 | xargs kill -9 2>/dev/null || true; vite",
+    "electron:dev": "pnpm build && electron .",
     "test": "vitest",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "vue-tsc -b",
     "check": "pnpm lint && pnpm typecheck && pnpm test -- --run",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "icons": "node scripts/generate-icons.mjs",
+    "build:mac": "pnpm icons && pnpm build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dir && ./scripts/sign-mac-app.sh",
+    "dist:mac": "pnpm build:mac && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --prepackaged \"release/mac-arm64/Minimax 纪.app\"",
+    "build:win": "pnpm icons && pnpm build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64 dir",
+    "dist:win": "pnpm icons && pnpm build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --x64",
+    "sign:mac": "./scripts/sign-mac-app.sh",
+    "cap:sync": "pnpm build && cap sync android",
+    "build:apk": "pnpm cap:sync && cd android && ../scripts/with-jdk21.sh ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/core": "^8.3.4",
     "axios": "^1.15.2",
     "vue": "^3.5.32"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
     "@types/node": "^24.12.2",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/test-utils": "^2.4.9",
     "@vue/tsconfig": "^0.9.1",
+    "electron": "^42.1.0",
+    "electron-builder": "^26.8.1",
     "eslint": "^10.2.1",
     "eslint-plugin-vue": "^10.9.0",
     "jsdom": "^29.1.0",
     "less": "^4.6.4",
+    "sharp": "^0.34.5",
     "typescript": "~6.0.2",
     "vite": "^8.0.10",
     "vitest": "^4.1.5",
     "vue-tsc": "^3.2.7"
+  },
+  "build": {
+    "appId": "com.minimax.ji",
+    "productName": "Minimax 纪",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.*",
+      "build/entitlements.mac.plist",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "target": [
+        "dir",
+        "dmg"
+      ],
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "artifactName": "Minimax-Ji-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "Minimax-Ji-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "Minimax-Ji-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

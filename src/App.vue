@@ -538,4 +538,118 @@ onBeforeUnmount(() => {
     }
   }
 }
+
+@media (max-width: 720px) {
+  .app-container {
+    height: 100dvh;
+  }
+
+  .header {
+    position: relative;
+    padding: 12px 14px;
+
+    .brand-lockup {
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+    }
+
+    h1 {
+      font-size: 17px;
+    }
+
+    p {
+      display: none;
+    }
+
+    .theme-toggle {
+      min-width: 44px;
+      padding: 5px;
+      gap: 0;
+
+      .toggle-label {
+        display: none;
+      }
+    }
+  }
+
+  .main-content {
+    flex: 1;
+    padding: 12px 12px 92px;
+    gap: 12px;
+    overflow-y: auto;
+
+    .sidebar {
+      position: fixed;
+      left: 10px;
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      z-index: 20;
+      width: auto;
+      max-height: 76px;
+      padding: 8px;
+      border-radius: 16px;
+      box-shadow: var(--shadow-lg);
+
+      .nav-list {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        margin: 0;
+        padding-bottom: 2px;
+        scroll-snap-type: x proximity;
+
+        li {
+          flex: 0 0 68px;
+          min-height: 58px;
+          padding: 8px 6px;
+          flex-direction: column;
+          gap: 4px;
+          scroll-snap-align: start;
+
+          .nav-mark {
+            width: 30px;
+            height: 30px;
+            flex-basis: 30px;
+            font-size: 10px;
+          }
+
+          strong {
+            max-width: 58px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 11px;
+          }
+
+          small {
+            display: none;
+          }
+
+          &:hover,
+          &:active {
+            transform: none;
+          }
+        }
+      }
+
+      .global-mini-player {
+        display: none;
+      }
+    }
+
+    .center-pane {
+      padding-right: 0;
+    }
+
+    .right-pane {
+      min-width: 0;
+      height: min(42dvh, 320px);
+    }
+  }
+}
 </style>

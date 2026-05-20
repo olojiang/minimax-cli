@@ -19,7 +19,6 @@ describe('SettingsPanel.vue', () => {
     const wrapper = mount(SettingsPanel);
     const input = wrapper.find('textarea');
     await input.setValue('new-token');
-    await input.trigger('change');
     expect(setApiToken).toHaveBeenCalledWith('new-token');
   });
 
@@ -30,7 +29,32 @@ describe('SettingsPanel.vue', () => {
     await wrapper.find('textarea').setValue('token');
     await wrapper.find('.btn').trigger('click');
 
+    expect(setApiToken).toHaveBeenLastCalledWith('token');
     expect(checkQuota).toHaveBeenCalled();
+  });
+
+  it('renders quota usage and total on two rows', async () => {
+    const wrapper = mount(SettingsPanel);
+    (checkQuota as any).mockResolvedValue({
+      model_remains: [{
+        model_name: 'MiniMax-M*',
+        current_interval_total_count: 4500,
+        current_interval_usage_count: 273,
+        current_weekly_total_count: 45000,
+        current_weekly_usage_count: 1481,
+      }]
+    });
+
+    await wrapper.find('textarea').setValue('token');
+    await wrapper.find('.btn').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('区间:273/4500');
+    expect(wrapper.text()).toContain('本周:1481/45000');
+    expect(wrapper.text()).not.toContain('区间总量');
+    expect(wrapper.text()).not.toContain('区间已用');
+    expect(wrapper.text()).not.toContain('本周总量');
+    expect(wrapper.text()).not.toContain('本周已用');
   });
 
   it('checks quota on mount when a token already exists', async () => {

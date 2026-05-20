@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Minimax 纪</string>
+    <string name="title_activity_main">Minimax 纪</string>
+    <string name="package_name">com.minimax.ji</string>
+    <string name="custom_url_scheme">com.minimax.ji</string>
+</resources>

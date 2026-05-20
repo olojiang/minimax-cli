@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 import { logger } from '../utils/logger';
 import { readStorage, removeStorage, writeStorage } from '../utils/safeStorage';
 
-const DEFAULT_BASE_URL = '/api';
+const DEFAULT_BASE_URL = Capacitor.isNativePlatform() ? 'https://api.minimaxi.com' : '/api';
 const API_SOURCE = 'Minimax-Web';
 const DEFAULT_TEXT_CHAT_MODEL = 'MiniMax-M2.7';
 const DEFAULT_SPEECH_MODEL = 'speech-2.8-hd';

@@ -8,7 +8,7 @@
           v-model="token" 
           :class="{ 'masked': !showToken }"
           placeholder="输入 MINIMAX_TOKEN" 
-          @change="updateToken"
+          @input="updateToken"
           rows="2"
         ></textarea>
         <div class="input-actions">
@@ -26,6 +26,32 @@
       </button>
     </div>
     <ApiProgress v-if="loading" title="正在检查账户配额" detail="Token 已保存，正在请求 MiniMax 配额接口" />
+
+    <section v-if="isDesktopApp" class="desktop-settings">
+      <h3>桌面端快捷键</h3>
+      <div class="input-group">
+        <label for="desktop-shortcut">唤醒并最大化</label>
+        <div class="shortcut-row">
+          <input
+            id="desktop-shortcut"
+            v-model="shortcutInput"
+            type="text"
+            placeholder="Shift+Alt+M"
+            @keyup.enter="saveShortcut"
+          />
+          <button class="btn" :disabled="savingShortcut || !shortcutInput.trim()" @click="saveShortcut">
+            {{ savingShortcut ? 'Saving...' : 'Save Shortcut' }}
+          </button>
+        </div>
+        <p class="shortcut-hint">
+          当前生效：{{ activeShortcut || '未注册' }}。格式示例：Shift+Alt+M、CommandOrControl+Alt+M。
+        </p>
+        <p v-if="shortcutMessage" class="shortcut-message" :class="{ error: shortcutError }">
+          {{ shortcutMessage }}
+        </p>
+      </div>
+    </section>
+
     <div v-if="result" class="result-box">
       <h4>配额信息 (Quota Details):</h4>
       
@@ -36,23 +62,23 @@
           </div>
           <div class="card-body">
             <div class="quota-row">
-              <span class="label" title="当前区间总量 (Interval Total)">区间总量 (Total):</span>
-              <span class="value">{{ item.current_interval_total_count ?? '-' }}</span>
+              <span class="label" title="当前区间已用 / 当前区间总量 (Interval Used / Total)">区间:</span>
+              <span class="value quota-usage">
+                <span class="highlight-used">{{ item.current_interval_usage_count ?? '-' }}</span>
+                <span class="quota-separator">/</span>
+                <span>{{ item.current_interval_total_count ?? '-' }}</span>
+              </span>
             </div>
             <div class="quota-row">
-              <span class="label" title="当前区间已用 (Interval Used)">区间已用 (Used):</span>
-              <span class="value highlight-used">{{ item.current_interval_usage_count ?? '-' }}</span>
+              <span class="label" title="本周已用 / 本周总量 (Weekly Used / Total)">本周:</span>
+              <span class="value quota-usage">
+                <span class="highlight-used">{{ item.current_weekly_usage_count ?? '-' }}</span>
+                <span class="quota-separator">/</span>
+                <span>{{ item.current_weekly_total_count ?? '-' }}</span>
+              </span>
             </div>
-            <div class="quota-row">
-              <span class="label" title="本周总量 (Weekly Total)">本周总量 (Weekly Total):</span>
-              <span class="value">{{ item.current_weekly_total_count ?? '-' }}</span>
-            </div>
-            <div class="quota-row">
-              <span class="label" title="本周已用 (Weekly Used)">本周已用 (Weekly Used):</span>
-              <span class="value highlight-used">{{ item.current_weekly_usage_count ?? '-' }}</span>
-            </div>
-            <div class="quota-row" v-if="item.end_time">
-              <span class="label">过期时间 (Expires):</span>
+            <div class="quota-row expires-row" v-if="item.end_time">
+              <span class="label" title="过期时间 (Expires)">过期时间:</span>
               <span class="value">{{ formatDate(item.end_time) }}</span>
             </div>
           </div>
@@ -74,6 +100,12 @@ const token = ref(getApiToken());
 const showToken = ref(false);
 const loading = ref(false);
 const result = ref<any>(null);
+const isDesktopApp = ref(false);
+const shortcutInput = ref('Shift+Alt+M');
+const activeShortcut = ref('');
+const savingShortcut = ref(false);
+const shortcutMessage = ref('');
+const shortcutError = ref(false);
 
 const copyToken = async () => {
   if (!token.value) return;
@@ -91,6 +123,7 @@ const updateToken = () => {
 
 const performCheckQuota = async () => {
   if (!token.value.trim() || loading.value) return;
+  updateToken();
   loading.value = true;
   result.value = null;
   try {
@@ -104,7 +137,40 @@ onMounted(() => {
   if (token.value.trim()) {
     void performCheckQuota();
   }
+  void loadDesktopConfig();
 });
+
+const loadDesktopConfig = async () => {
+  if (!window.minimaxDesktop) return;
+  isDesktopApp.value = true;
+  try {
+    const config = await window.minimaxDesktop.getConfig();
+    shortcutInput.value = config.shortcut || config.defaultShortcut;
+    activeShortcut.value = config.activeShortcut || config.shortcut || '';
+  } catch {
+    shortcutMessage.value = '读取桌面端配置失败。';
+    shortcutError.value = true;
+  }
+};
+
+const saveShortcut = async () => {
+  if (!window.minimaxDesktop || savingShortcut.value) return;
+  savingShortcut.value = true;
+  shortcutMessage.value = '';
+  shortcutError.value = false;
+  try {
+    const result = await window.minimaxDesktop.setShortcut(shortcutInput.value);
+    activeShortcut.value = result.shortcut;
+    shortcutInput.value = result.shortcut || shortcutInput.value;
+    shortcutMessage.value = result.error || '快捷键已保存。';
+    shortcutError.value = !result.ok;
+  } catch {
+    shortcutMessage.value = '保存快捷键失败，请检查快捷键格式。';
+    shortcutError.value = true;
+  } finally {
+    savingShortcut.value = false;
+  }
+};
 
 const formatResult = (data: any) => JSON.stringify(data, null, 2);
 
@@ -112,7 +178,13 @@ const formatDate = (timestamp: number) => {
   if (!timestamp) return '-';
   // Check if timestamp is in seconds instead of milliseconds. Usually if it's < 1e12 it's seconds.
   const ms = timestamp < 1e12 ? timestamp * 1000 : timestamp;
-  return new Date(ms).toLocaleString();
+  const date = new Date(ms);
+  const pad = (value: number) => value.toString().padStart(2, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate())
+  ].join('-') + ` ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 </script>
 
@@ -121,6 +193,42 @@ const formatDate = (timestamp: number) => {
 
 .result-box {
   margin-top: 24px;
+}
+
+.desktop-settings {
+  margin-top: 24px;
+  padding: 18px;
+  background: var(--control-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+
+  h3 {
+    margin: 0 0 14px;
+    font-size: 16px;
+    font-weight: 760;
+  }
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+
+  input {
+    width: 100%;
+  }
+}
+
+.shortcut-hint,
+.shortcut-message {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.shortcut-message.error {
+  color: var(--error);
 }
 
 .token-input-wrapper {
@@ -211,7 +319,9 @@ const formatDate = (timestamp: number) => {
     
     .quota-row {
       display: flex;
+      align-items: baseline;
       justify-content: space-between;
+      gap: 12px;
       margin-bottom: 10px;
       font-size: 0.95em;
       
@@ -221,17 +331,50 @@ const formatDate = (timestamp: number) => {
       
       .label {
         color: var(--text-muted);
+        white-space: nowrap;
       }
       
       .value {
+        flex: 0 0 auto;
         font-weight: 500;
         color: var(--text-primary);
-        
-        &.highlight-used {
-          color: var(--error);
-        }
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .highlight-used {
+        color: var(--error);
+      }
+
+      .quota-usage {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+
+      .quota-separator {
+        color: var(--text-muted);
+        font-weight: 400;
       }
     }
+
+    .expires-row {
+      white-space: nowrap;
+    }
+  }
+}
+
+@media (max-width: 720px) {
+  .shortcut-row {
+    grid-template-columns: 1fr;
+  }
+
+  .quota-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .quota-card .card-body .quota-row {
+    gap: 10px;
   }
 }
 </style>

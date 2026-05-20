@@ -240,3 +240,28 @@
     transform: translateY(0) scale(1);
   }
 }
+
+@media (max-width: 720px) {
+  .panel {
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 14px;
+
+    &:hover {
+      transform: none;
+    }
+
+    h2 {
+      margin-bottom: 16px;
+      font-size: 18px;
+    }
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  .result-box {
+    padding: 14px;
+  }
+}

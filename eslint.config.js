@@ -11,6 +11,14 @@ const vueStyleRules = {
 }
 
 export default [
+  {
+    ignores: [
+      'android/**/build/**',
+      'android/app/src/main/assets/**',
+      'dist/**',
+      'release/**',
+    ],
+  },
   ...pluginVue.configs['flat/recommended'],
   {
     files: ['**/*.{ts,tsx}'],

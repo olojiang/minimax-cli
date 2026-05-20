@@ -342,6 +342,7 @@ function sendJson(res: any, status: number, data: unknown) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
+    base: './',
     plugins: [vue(), localLibraryPlugin()],
     define: {
       'import.meta.env.MINIMAX_TOKEN': JSON.stringify(env.MINIMAX_TOKEN || '')
