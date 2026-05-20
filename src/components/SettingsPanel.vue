@@ -8,7 +8,7 @@
           v-model="token" 
           :class="{ 'masked': !showToken }"
           placeholder="输入 MINIMAX_TOKEN" 
-          @input="updateToken"
+          @input="updateToken()"
           rows="2"
         ></textarea>
         <div class="input-actions">
@@ -95,6 +95,7 @@
 import { onMounted, ref } from 'vue';
 import { setApiToken, checkQuota, getApiToken } from '../api/client';
 import ApiProgress from './ApiProgress.vue';
+import { logger } from '../utils/logger';
 
 const token = ref(getApiToken());
 const showToken = ref(false);
@@ -117,13 +118,25 @@ const copyToken = async () => {
   }
 };
 
-const updateToken = () => {
+const persistDesktopToken = async (logSuccess = false) => {
+  if (!window.minimaxDesktop) return;
+  try {
+    await window.minimaxDesktop.setApiToken(token.value);
+    if (logSuccess) logger.success('Desktop API token saved');
+  } catch (error) {
+    logger.warn('Desktop token persistence failed', error);
+  }
+};
+
+const updateToken = (syncDesktop = true) => {
   setApiToken(token.value);
+  if (syncDesktop) void persistDesktopToken();
 };
 
 const performCheckQuota = async () => {
   if (!token.value.trim() || loading.value) return;
-  updateToken();
+  updateToken(false);
+  await persistDesktopToken(true);
   loading.value = true;
   result.value = null;
   try {
@@ -133,11 +146,11 @@ const performCheckQuota = async () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
+  await loadDesktopConfig();
   if (token.value.trim()) {
     void performCheckQuota();
   }
-  void loadDesktopConfig();
 });
 
 const loadDesktopConfig = async () => {
@@ -145,6 +158,11 @@ const loadDesktopConfig = async () => {
   isDesktopApp.value = true;
   try {
     const config = await window.minimaxDesktop.getConfig();
+    if (config.apiToken && config.apiToken !== token.value) {
+      token.value = config.apiToken;
+      setApiToken(config.apiToken);
+      logger.info('Restored API token from desktop config');
+    }
     shortcutInput.value = config.shortcut || config.defaultShortcut;
     activeShortcut.value = config.activeShortcut || config.shortcut || '';
   } catch {

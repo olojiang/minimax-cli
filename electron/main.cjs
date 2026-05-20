@@ -57,6 +57,13 @@ async function writeDesktopConfig(config) {
   await fs.writeFile(configPath(), JSON.stringify(config, null, 2));
 }
 
+async function mergeDesktopConfig(patch) {
+  await writeDesktopConfig({
+    ...(await readDesktopConfig()),
+    ...patch,
+  });
+}
+
 function showAndMaximize() {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -80,12 +87,12 @@ async function registerConfiguredShortcut(shortcut) {
       return { ok: false, shortcut: '', error: `快捷键 ${accelerator} 注册失败，可能已被系统或其他应用占用。` };
     }
     activeShortcut = DEFAULT_SHORTCUT;
-    await writeDesktopConfig({ shortcut: DEFAULT_SHORTCUT });
+    await mergeDesktopConfig({ shortcut: DEFAULT_SHORTCUT });
     return { ok: false, shortcut: DEFAULT_SHORTCUT, error: `快捷键 ${accelerator} 注册失败，已回退到 ${DEFAULT_SHORTCUT}。` };
   }
 
   activeShortcut = accelerator;
-  await writeDesktopConfig({ shortcut: accelerator });
+  await mergeDesktopConfig({ shortcut: accelerator });
   return { ok: true, shortcut: accelerator };
 }
 
@@ -458,6 +465,11 @@ app.whenReady().then(async () => {
   }));
 
   ipcMain.handle('desktop:set-shortcut', async (_event, shortcut) => registerConfiguredShortcut(shortcut));
+  ipcMain.handle('desktop:set-api-token', async (_event, token) => {
+    const apiToken = typeof token === 'string' ? token.trim() : '';
+    await mergeDesktopConfig({ apiToken });
+    return { ok: true, hasApiToken: Boolean(apiToken) };
+  });
 
   createWindow();
   const config = await readDesktopConfig();
@@ -470,7 +482,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  app.quit();
 });
 
 app.on('will-quit', () => {

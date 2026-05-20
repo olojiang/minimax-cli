@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import SettingsPanel from './SettingsPanel.vue';
 import { checkQuota, getApiToken, setApiToken } from '../api/client';
 
@@ -13,6 +13,10 @@ describe('SettingsPanel.vue', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (getApiToken as any).mockReturnValue('');
+  });
+
+  afterEach(() => {
+    delete (window as any).minimaxDesktop;
   });
 
   it('updates token', async () => {
@@ -31,6 +35,52 @@ describe('SettingsPanel.vue', () => {
 
     expect(setApiToken).toHaveBeenLastCalledWith('token');
     expect(checkQuota).toHaveBeenCalled();
+  });
+
+  it('persists token to desktop config before checking quota', async () => {
+    const setApiTokenDesktop = vi.fn().mockResolvedValue({ ok: true, hasApiToken: true });
+    (window as any).minimaxDesktop = {
+      getConfig: vi.fn().mockResolvedValue({
+        shortcut: 'Shift+Alt+M',
+        activeShortcut: 'Shift+Alt+M',
+        defaultShortcut: 'Shift+Alt+M',
+        platform: 'darwin',
+      }),
+      setApiToken: setApiTokenDesktop,
+      setShortcut: vi.fn(),
+    };
+    (checkQuota as any).mockResolvedValue({ data: 'quota' });
+
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    await wrapper.find('textarea').setValue('desktop-token');
+    await wrapper.find('.btn').trigger('click');
+    await flushPromises();
+
+    expect(setApiTokenDesktop).toHaveBeenCalledWith('desktop-token');
+    expect(checkQuota).toHaveBeenCalled();
+  });
+
+  it('restores saved desktop token on mount', async () => {
+    (window as any).minimaxDesktop = {
+      getConfig: vi.fn().mockResolvedValue({
+        apiToken: 'desktop-token',
+        shortcut: 'Shift+Alt+M',
+        activeShortcut: 'Shift+Alt+M',
+        defaultShortcut: 'Shift+Alt+M',
+        platform: 'darwin',
+      }),
+      setApiToken: vi.fn().mockResolvedValue({ ok: true, hasApiToken: true }),
+      setShortcut: vi.fn(),
+    };
+    (checkQuota as any).mockResolvedValue({ data: 'quota' });
+
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('desktop-token');
+    expect(setApiToken).toHaveBeenCalledWith('desktop-token');
+    expect(checkQuota).toHaveBeenCalledOnce();
   });
 
   it('renders quota usage and total on two rows', async () => {
