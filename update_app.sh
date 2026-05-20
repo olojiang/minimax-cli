@@ -8,6 +8,7 @@ APPLE_KEYS_DIR="/Users/hunter/Workspace/apple_keys"
 APPLE_METADATA_ENV="${APPLE_KEYS_DIR}/apple_key_metadata.env"
 DEFAULT_KEYCHAIN="${HOME}/Library/Keychains/apple-build-signing.keychain-db"
 DO_NOTARIZE=0
+ELECTRON_CACHE_DIR="${HOME}/Library/Caches/electron"
 
 usage() {
   cat <<EOF
@@ -138,6 +139,58 @@ stop_existing_processes() {
   done
 }
 
+cached_zip_is_valid() {
+  local zip_path="$1"
+  [[ -f "${zip_path}" ]] && unzip -tq "${zip_path}" >/dev/null 2>&1
+}
+
+download_with_retry() {
+  local url="$1"
+  local output="$2"
+  local tmp_output="${output}.download"
+
+  rm -f "${tmp_output}"
+  curl \
+    --fail \
+    --location \
+    --retry 8 \
+    --retry-delay 2 \
+    --retry-max-time 300 \
+    --connect-timeout 20 \
+    --output "${tmp_output}" \
+    "${url}"
+
+  unzip -tq "${tmp_output}" >/dev/null
+  mv "${tmp_output}" "${output}"
+}
+
+prefetch_electron_runtime() {
+  local electron_version arch zip_name cache_zip url
+
+  electron_version="$(node -p "require('electron/package.json').version")"
+  arch="$(uname -m)"
+  if [[ "${arch}" == "arm64" ]]; then
+    arch="arm64"
+  else
+    arch="x64"
+  fi
+
+  mkdir -p "${ELECTRON_CACHE_DIR}"
+  zip_name="electron-v${electron_version}-darwin-${arch}.zip"
+  cache_zip="${ELECTRON_CACHE_DIR}/${zip_name}"
+  url="https://github.com/electron/electron/releases/download/v${electron_version}/${zip_name}"
+
+  if cached_zip_is_valid "${cache_zip}"; then
+    echo "Electron runtime 已在缓存中：${cache_zip}"
+    return
+  fi
+
+  echo "预下载 Electron runtime：${url}"
+  echo "缓存位置：${cache_zip}"
+  rm -f "${cache_zip}" "${cache_zip}.download"
+  download_with_retry "${url}" "${cache_zip}"
+}
+
 install_and_launch() {
   stop_existing_processes
 
@@ -164,6 +217,7 @@ echo "重新编译 macOS app..."
 rm -rf release/mac release/mac-arm64
 pnpm icons
 pnpm build
+prefetch_electron_runtime
 CSC_IDENTITY_AUTO_DISCOVERY=false pnpm exec electron-builder --mac dir
 
 find_app_bundle
