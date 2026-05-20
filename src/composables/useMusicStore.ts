@@ -33,14 +33,26 @@ function isUsableAudioMedia(media: LocalLibraryRecord['media'][number]) {
   return media.source.replace(/\s/g, '').length >= MIN_INLINE_AUDIO_SOURCE_LENGTH;
 }
 
+function dedupeRecords(records: LocalLibraryRecord[]) {
+  const seen = new Set<string>();
+  return records.filter(record => {
+    if (seen.has(record.id)) return false;
+    seen.add(record.id);
+    return true;
+  });
+}
+
 export function useMusicStore() {
   const init = async () => {
     const saved = readStorage(STORAGE_KEY);
     if (saved) {
       removeStorage(STORAGE_KEY);
     }
-    const records = await loadLocalLibraryRecords('audio');
-    const restored = records
+    const records = [
+      ...await loadLocalLibraryRecords('music'),
+      ...await loadLocalLibraryRecords('audio'),
+    ];
+    const restored = dedupeRecords(records)
       .map(record => ({
         id: record.id,
         prompt: record.prompt,
@@ -62,7 +74,8 @@ export function useMusicStore() {
   };
 
   const addMusic = async (musicData: { id: string, prompt: string, lyrics: string, audioHex: string, timestamp: number }) => {
-    await saveLocalLibraryRecord('audio', musicData.prompt, {
+    await saveLocalLibraryRecord('music', musicData.prompt, {
+      mmxPanel: 'music',
       data: { audio: musicData.audioHex },
       lyrics: musicData.lyrics,
       id: musicData.id,

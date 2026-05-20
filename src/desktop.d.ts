@@ -8,11 +8,18 @@ declare global {
         shortcut: string;
         activeShortcut: string;
         defaultShortcut: string;
+        generationRoot: string;
+        defaultGenerationRoot: string;
+        configPath: string;
         platform: string;
       }>;
       setApiToken: (token: string) => Promise<{
         ok: boolean;
         hasApiToken: boolean;
+      }>;
+      chooseGenerationRoot: () => Promise<{
+        ok: boolean;
+        generationRoot: string;
       }>;
       setShortcut: (shortcut: string) => Promise<{
         ok: boolean;

@@ -44,9 +44,13 @@ describe('SettingsPanel.vue', () => {
         shortcut: 'Shift+Alt+M',
         activeShortcut: 'Shift+Alt+M',
         defaultShortcut: 'Shift+Alt+M',
+        generationRoot: '/tmp/minimax-output',
+        defaultGenerationRoot: '/tmp/default-output',
+        configPath: '/tmp/desktop-config.json',
         platform: 'darwin',
       }),
       setApiToken: setApiTokenDesktop,
+      chooseGenerationRoot: vi.fn(),
       setShortcut: vi.fn(),
     };
     (checkQuota as any).mockResolvedValue({ data: 'quota' });
@@ -68,9 +72,13 @@ describe('SettingsPanel.vue', () => {
         shortcut: 'Shift+Alt+M',
         activeShortcut: 'Shift+Alt+M',
         defaultShortcut: 'Shift+Alt+M',
+        generationRoot: '/tmp/minimax-output',
+        defaultGenerationRoot: '/tmp/default-output',
+        configPath: '/tmp/desktop-config.json',
         platform: 'darwin',
       }),
       setApiToken: vi.fn().mockResolvedValue({ ok: true, hasApiToken: true }),
+      chooseGenerationRoot: vi.fn(),
       setShortcut: vi.fn(),
     };
     (checkQuota as any).mockResolvedValue({ data: 'quota' });
@@ -81,6 +89,42 @@ describe('SettingsPanel.vue', () => {
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('desktop-token');
     expect(setApiToken).toHaveBeenCalledWith('desktop-token');
     expect(checkQuota).toHaveBeenCalledOnce();
+  });
+
+  it('shows and updates the desktop generation root', async () => {
+    const chooseGenerationRoot = vi.fn().mockResolvedValue({
+      ok: true,
+      generationRoot: '/Users/test/MiniMax Output',
+    });
+    (window as any).minimaxDesktop = {
+      getConfig: vi.fn().mockResolvedValue({
+        shortcut: 'Shift+Alt+M',
+        activeShortcut: 'Shift+Alt+M',
+        defaultShortcut: 'Shift+Alt+M',
+        generationRoot: '/Users/test/Old Output',
+        defaultGenerationRoot: '/Users/test/Library/Application Support/Minimax/.mmx-library/files',
+        configPath: '/Users/test/Library/Application Support/Minimax/desktop-config.json',
+        platform: 'darwin',
+      }),
+      setApiToken: vi.fn().mockResolvedValue({ ok: true, hasApiToken: true }),
+      chooseGenerationRoot,
+      setShortcut: vi.fn(),
+    };
+
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('/Users/test/Old Output');
+    expect(wrapper.text()).toContain('image、speech、video、music');
+
+    const chooseButton = wrapper.findAll('button').find(button => button.text() === 'Choose Folder');
+    expect(chooseButton).toBeTruthy();
+    await chooseButton!.trigger('click');
+    await flushPromises();
+
+    expect(chooseGenerationRoot).toHaveBeenCalledOnce();
+    expect(wrapper.text()).toContain('/Users/test/MiniMax Output');
+    expect(wrapper.text()).toContain('生成根目录已保存。');
   });
 
   it('renders quota usage and total on two rows', async () => {

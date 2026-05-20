@@ -50,7 +50,7 @@ describe('SpeechPanel.vue', () => {
       format: 'mp3',
     }));
     expect(saveLocalLibraryRecord).toHaveBeenCalledWith(
-      'audio',
+      'speech',
       '你好 MiniMax',
       expect.objectContaining({
         mmxPanel: 'speech',

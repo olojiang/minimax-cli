@@ -609,7 +609,7 @@ const persistSpeechLibraryRecord = async (
   startedAt: number,
   replaceId?: string,
 ) => {
-  const libraryRecord = await saveLocalLibraryRecord('audio', prompt, {
+  const libraryRecord = await saveLocalLibraryRecord('speech', prompt, {
     mmxPanel: 'speech',
     text: prompt,
     options: speechOptions,
@@ -711,8 +711,11 @@ const formatResult = (data: any) => JSON.stringify(data, null, 2);
 const refreshSpeechLibrary = async () => {
   libraryLoading.value = true;
   try {
-    const records = await loadLocalLibraryRecords('audio');
-    const restored = records
+    const records = [
+      ...await loadLocalLibraryRecords('speech'),
+      ...await loadLocalLibraryRecords('audio'),
+    ];
+    const restored = dedupeRecords(records)
       .filter(isSpeechRecord)
       .map(recordToSpeechItem)
       .filter((item): item is SpeechItem => Boolean(item))
@@ -723,6 +726,15 @@ const refreshSpeechLibrary = async () => {
   } finally {
     libraryLoading.value = false;
   }
+};
+
+const dedupeRecords = (records: LocalLibraryRecord[]) => {
+  const seen = new Set<string>();
+  return records.filter(record => {
+    if (seen.has(record.id)) return false;
+    seen.add(record.id);
+    return true;
+  });
 };
 
 const playSpeech = async (item: SpeechItem) => {

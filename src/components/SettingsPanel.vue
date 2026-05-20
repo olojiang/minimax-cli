@@ -28,7 +28,37 @@
     <ApiProgress v-if="loading" title="正在检查账户配额" detail="Token 已保存，正在请求 MiniMax 配额接口" />
 
     <section v-if="isDesktopApp" class="desktop-settings">
-      <h3>桌面端快捷键</h3>
+      <h3>桌面端配置</h3>
+      <div class="desktop-config-grid">
+        <div class="config-row">
+          <span class="config-label">配置文件</span>
+          <code>{{ configPath || '-' }}</code>
+        </div>
+        <div class="config-row">
+          <span class="config-label">生成根目录</span>
+          <code>{{ generationRoot || defaultGenerationRoot || '-' }}</code>
+        </div>
+      </div>
+      <div class="input-group">
+        <label>生成文件目录</label>
+        <div class="shortcut-row">
+          <input
+            :value="generationRoot || defaultGenerationRoot"
+            type="text"
+            readonly
+            placeholder="选择图片、语音、视频、音乐生成文件的根目录"
+          />
+          <button class="btn" :disabled="choosingGenerationRoot" @click="chooseGenerationRoot">
+            {{ choosingGenerationRoot ? 'Choosing...' : 'Choose Folder' }}
+          </button>
+        </div>
+        <p class="shortcut-hint">
+          后续生成会保存到 image、speech、video、music 四个子目录。
+        </p>
+        <p v-if="generationRootMessage" class="shortcut-message" :class="{ error: generationRootError }">
+          {{ generationRootMessage }}
+        </p>
+      </div>
       <div class="input-group">
         <label for="desktop-shortcut">唤醒并最大化</label>
         <div class="shortcut-row">
@@ -104,6 +134,12 @@ const result = ref<any>(null);
 const isDesktopApp = ref(false);
 const shortcutInput = ref('Shift+Alt+M');
 const activeShortcut = ref('');
+const configPath = ref('');
+const generationRoot = ref('');
+const defaultGenerationRoot = ref('');
+const choosingGenerationRoot = ref(false);
+const generationRootMessage = ref('');
+const generationRootError = ref(false);
 const savingShortcut = ref(false);
 const shortcutMessage = ref('');
 const shortcutError = ref(false);
@@ -165,6 +201,9 @@ const loadDesktopConfig = async () => {
     }
     shortcutInput.value = config.shortcut || config.defaultShortcut;
     activeShortcut.value = config.activeShortcut || config.shortcut || '';
+    configPath.value = config.configPath || '';
+    generationRoot.value = config.generationRoot || '';
+    defaultGenerationRoot.value = config.defaultGenerationRoot || '';
   } catch {
     shortcutMessage.value = '读取桌面端配置失败。';
     shortcutError.value = true;
@@ -187,6 +226,26 @@ const saveShortcut = async () => {
     shortcutError.value = true;
   } finally {
     savingShortcut.value = false;
+  }
+};
+
+const chooseGenerationRoot = async () => {
+  if (!window.minimaxDesktop || choosingGenerationRoot.value) return;
+  choosingGenerationRoot.value = true;
+  generationRootMessage.value = '';
+  generationRootError.value = false;
+  try {
+    const result = await window.minimaxDesktop.chooseGenerationRoot();
+    generationRoot.value = result.generationRoot || generationRoot.value;
+    generationRootMessage.value = result.ok ? '生成根目录已保存。' : '已取消选择生成根目录。';
+    generationRootError.value = false;
+    if (result.ok) logger.success('Generation root saved', { generationRoot: result.generationRoot });
+  } catch (error) {
+    generationRootMessage.value = '选择生成根目录失败。';
+    generationRootError.value = true;
+    logger.warn('Generation root selection failed', error);
+  } finally {
+    choosingGenerationRoot.value = false;
   }
 };
 
@@ -236,6 +295,33 @@ const formatDate = (timestamp: number) => {
   input {
     width: 100%;
   }
+}
+
+.desktop-config-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.config-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  color: var(--text-muted);
+  font-size: 13px;
+
+  code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }
+}
+
+.config-label {
+  white-space: nowrap;
 }
 
 .shortcut-hint,
@@ -385,6 +471,11 @@ const formatDate = (timestamp: number) => {
 @media (max-width: 720px) {
   .shortcut-row {
     grid-template-columns: 1fr;
+  }
+
+  .config-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .quota-cards {

@@ -84,7 +84,8 @@ describe('useMusicStore', () => {
       timestamp: 1,
     });
 
-    expect(saveLocalLibraryRecord).toHaveBeenCalledWith('audio', '水流声', expect.objectContaining({
+    expect(saveLocalLibraryRecord).toHaveBeenCalledWith('music', '水流声', expect.objectContaining({
+      mmxPanel: 'music',
       data: { audio: 'a'.repeat(40) },
       id: 'new-audio',
     }));

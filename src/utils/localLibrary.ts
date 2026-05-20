@@ -1,4 +1,4 @@
-export type LocalLibraryKind = 'image' | 'audio' | 'video';
+export type LocalLibraryKind = 'image' | 'speech' | 'video' | 'music' | 'audio';
 
 export type LocalLibraryRecord = {
   id: string;

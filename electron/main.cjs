@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, Menu, protocol } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, protocol } = require('electron');
 const fs = require('node:fs/promises');
 const { existsSync } = require('node:fs');
 const path = require('node:path');
@@ -23,6 +23,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWindow = null;
 let activeShortcut = '';
+let generationRoot = '';
 
 function distRoot() {
   return path.join(app.getAppPath(), 'dist');
@@ -41,12 +42,28 @@ function recordsPath() {
 }
 
 function filesRoot() {
-  return path.join(libraryRoot(), 'files');
+  return generationRoot || path.join(libraryRoot(), 'files');
+}
+
+function normalizeGenerationRoot(value) {
+  return typeof value === 'string' && value.trim() ? path.resolve(value.trim()) : '';
+}
+
+function currentDesktopConfig(config = {}) {
+  const resolvedRoot = normalizeGenerationRoot(config.generationRoot);
+  return {
+    ...config,
+    generationRoot: resolvedRoot || filesRoot(),
+    defaultGenerationRoot: path.join(libraryRoot(), 'files'),
+    configPath: configPath(),
+  };
 }
 
 async function readDesktopConfig() {
   try {
-    return JSON.parse(await fs.readFile(configPath(), 'utf8'));
+    const config = JSON.parse(await fs.readFile(configPath(), 'utf8'));
+    generationRoot = normalizeGenerationRoot(config.generationRoot);
+    return config;
   } catch {
     return { shortcut: DEFAULT_SHORTCUT };
   }
@@ -58,10 +75,12 @@ async function writeDesktopConfig(config) {
 }
 
 async function mergeDesktopConfig(patch) {
-  await writeDesktopConfig({
+  const nextConfig = {
     ...(await readDesktopConfig()),
     ...patch,
-  });
+  };
+  await writeDesktopConfig(nextConfig);
+  generationRoot = normalizeGenerationRoot(nextConfig.generationRoot);
 }
 
 function showAndMaximize() {
@@ -255,21 +274,36 @@ async function deleteRecord(id) {
 }
 
 function normalizeKind(value) {
-  if (value === 'image' || value === 'audio' || value === 'video') return value;
-  throw new Error('kind must be image, audio, or video');
+  if (value === 'image' || value === 'speech' || value === 'video' || value === 'music' || value === 'audio') return value;
+  throw new Error('kind must be image, speech, video, or music');
+}
+
+function mediaKindForLibraryKind(kind) {
+  if (kind === 'speech' || kind === 'music' || kind === 'audio') return 'audio';
+  return kind;
+}
+
+function folderForLibraryKind(kind, response) {
+  if (kind === 'audio') {
+    if (response?.mmxPanel === 'speech') return 'speech';
+    if (response?.mmxPanel === 'music' || typeof response?.lyrics === 'string') return 'music';
+  }
+  return kind;
 }
 
 async function persistMedia(kind, recordId, response) {
-  const sources = extractMediaSources(kind, response);
+  const mediaKind = mediaKindForLibraryKind(kind);
+  const folder = folderForLibraryKind(kind, response);
+  const sources = extractMediaSources(mediaKind, response);
   const media = [];
-  await fs.mkdir(path.join(filesRoot(), kind), { recursive: true });
+  await fs.mkdir(path.join(filesRoot(), folder), { recursive: true });
 
   for (let index = 0; index < sources.length; index += 1) {
     const source = sources[index];
-    const parsed = await parseMediaSource(source, kind);
+    const parsed = await parseMediaSource(source, mediaKind);
     if (!parsed) continue;
 
-    const file = `${kind}/${recordId}-${index + 1}.${parsed.ext}`;
+    const file = `${folder}/${recordId}-${index + 1}.${parsed.ext}`;
     await fs.writeFile(path.join(filesRoot(), file), parsed.data);
     media.push({
       source,
@@ -458,7 +492,7 @@ app.whenReady().then(async () => {
   protocol.handle('app', handleAppProtocol);
 
   ipcMain.handle('desktop:get-config', async () => ({
-    ...(await readDesktopConfig()),
+    ...currentDesktopConfig(await readDesktopConfig()),
     activeShortcut,
     defaultShortcut: DEFAULT_SHORTCUT,
     platform: process.platform,
@@ -470,9 +504,25 @@ app.whenReady().then(async () => {
     await mergeDesktopConfig({ apiToken });
     return { ok: true, hasApiToken: Boolean(apiToken) };
   });
+  ipcMain.handle('desktop:choose-generation-root', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '选择生成文件根目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) {
+      return { ok: false, generationRoot: filesRoot() };
+    }
+
+    const selected = normalizeGenerationRoot(result.filePaths[0]);
+    generationRoot = selected;
+    await fs.mkdir(selected, { recursive: true });
+    await mergeDesktopConfig({ generationRoot: selected });
+    return { ok: true, generationRoot: selected };
+  });
 
   createWindow();
   const config = await readDesktopConfig();
+  generationRoot = normalizeGenerationRoot(config.generationRoot);
   await registerConfiguredShortcut(config.shortcut || DEFAULT_SHORTCUT);
 
   app.on('activate', () => {

@@ -5,7 +5,7 @@ import { basename, extname, join, resolve } from 'node:path'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-type LibraryKind = 'image' | 'audio' | 'video';
+type LibraryKind = 'image' | 'speech' | 'video' | 'music' | 'audio';
 
 type LibraryRecord = {
   id: string;
@@ -140,23 +140,38 @@ async function deleteRecord(id: string): Promise<boolean> {
 }
 
 function normalizeKind(value: unknown): LibraryKind {
-  if (value === 'image' || value === 'audio' || value === 'video') {
+  if (value === 'image' || value === 'speech' || value === 'video' || value === 'music' || value === 'audio') {
     return value;
   }
-  throw new Error('kind must be image, audio, or video');
+  throw new Error('kind must be image, speech, video, or music');
+}
+
+function mediaKindForLibraryKind(kind: LibraryKind): 'image' | 'audio' | 'video' {
+  if (kind === 'speech' || kind === 'music' || kind === 'audio') return 'audio';
+  return kind;
+}
+
+function folderForLibraryKind(kind: LibraryKind, response: any) {
+  if (kind === 'audio') {
+    if (response?.mmxPanel === 'speech') return 'speech';
+    if (response?.mmxPanel === 'music' || typeof response?.lyrics === 'string') return 'music';
+  }
+  return kind;
 }
 
 async function persistMedia(kind: LibraryKind, recordId: string, response: unknown): Promise<LibraryRecord['media']> {
-  const sources = extractMediaSources(kind, response);
+  const mediaKind = mediaKindForLibraryKind(kind);
+  const folder = folderForLibraryKind(kind, response);
+  const sources = extractMediaSources(mediaKind, response);
   const media: LibraryRecord['media'] = [];
-  await mkdir(join(filesRoot, kind), { recursive: true });
+  await mkdir(join(filesRoot, folder), { recursive: true });
 
   for (let index = 0; index < sources.length; index += 1) {
     const source = sources[index];
-    const parsed = await parseMediaSource(source, kind);
+    const parsed = await parseMediaSource(source, mediaKind);
     if (!parsed) continue;
 
-    const file = `${kind}/${recordId}-${index + 1}.${parsed.ext}`;
+    const file = `${folder}/${recordId}-${index + 1}.${parsed.ext}`;
     await writeFile(join(filesRoot, file), parsed.data);
     media.push({
       source,
